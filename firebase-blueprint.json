@@ -1,0 +1,314 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User profile with learning preferences and account metadata",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Unique user ID" },
+        "email": { "type": "string", "description": "User email address" },
+        "displayName": { "type": "string", "description": "User display name" },
+        "avatarUrl": { "type": "string", "description": "User avatar image URL" },
+        "educationLevel": { "type": "string", "description": "Academic tier" },
+        "proficiencyLevel": { "type": "string", "description": "Learning proficiency" },
+        "primaryGoal": { "type": "string", "description": "Primary educational goal" },
+        "streakDays": { "type": "number", "description": "Consecutive days active" },
+        "totalStudyMinutes": { "type": "number", "description": "Total study time" },
+        "points": { "type": "number", "description": "Earned learning XP" },
+        "createdAt": { "type": "number", "description": "Timestamp created" },
+        "updatedAt": { "type": "number", "description": "Timestamp updated" }
+      },
+      "required": ["uid", "email", "displayName", "createdAt", "updatedAt"]
+    },
+    "StudentCognitiveMemory": {
+      "title": "StudentCognitiveMemory",
+      "description": "Adaptive cognitive memory model tracking knowledge gaps, strengths, and pedagogical adjustments for Nora AI tutor",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Document ID matching userId" },
+        "userId": { "type": "string", "description": "Owner student user ID" },
+        "learnedKnowledgeGaps": { "type": "array", "description": "Identified conceptual weaknesses" },
+        "demonstratedStrengths": { "type": "array", "description": "Demonstrated masteries" },
+        "preferredExplanations": { "type": "object", "description": "Preferred explanation nuances" },
+        "recurringMistakesCount": { "type": "object", "description": "Frequency map of recurring misconceptions" },
+        "noraPedagogicalStrategy": { "type": "object", "description": "Current active teaching adaptation strategy" },
+        "lastSelfReflectionAt": { "type": "number", "description": "Timestamp of most recent self-learning reflection" },
+        "updatedAt": { "type": "number", "description": "Timestamp of last update" }
+      },
+      "required": ["id", "userId", "learnedKnowledgeGaps", "demonstratedStrengths", "updatedAt"]
+    },
+    "TeachingEvolutionLog": {
+      "title": "TeachingEvolutionLog",
+      "description": "Audit trail log tracking each pedagogical adaptation Nora makes for a student",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique log identifier" },
+        "userId": { "type": "string", "description": "Student user ID" },
+        "interactionSummary": { "type": "string", "description": "Brief topic summary" },
+        "studentGraspObserved": { "type": "string", "description": "Observed mastery level" },
+        "identifiedGap": { "type": "string", "description": "Specific conceptual gap identified" },
+        "tutorAdjustmentMade": { "type": "string", "description": "Pedagogical adjustment description" },
+        "timestamp": { "type": "number", "description": "Log creation timestamp" }
+      },
+      "required": ["id", "userId", "interactionSummary", "studentGraspObserved", "tutorAdjustmentMade", "timestamp"]
+    },
+    "TutorSession": {
+      "title": "TutorSession",
+      "description": "Interactive study dialogue session with Nora",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique session ID" },
+        "userId": { "type": "string", "description": "User ID" },
+        "studySetId": { "type": "string", "description": "Associated study set ID" },
+        "title": { "type": "string", "description": "Session title" },
+        "activeMode": { "type": "string", "description": "Teaching mode" },
+        "identifiedWeakTopics": { "type": "array", "description": "Topics flagged during session" },
+        "createdAt": { "type": "number", "description": "Creation timestamp" },
+        "updatedAt": { "type": "number", "description": "Update timestamp" }
+      },
+      "required": ["id", "userId", "title", "createdAt", "updatedAt"]
+    },
+    "TutorMessage": {
+      "title": "TutorMessage",
+      "description": "Single message in a Nora tutoring conversation",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique message ID" },
+        "sessionId": { "type": "string", "description": "Parent session ID" },
+        "sender": { "type": "string", "description": "user or nora" },
+        "content": { "type": "string", "description": "Message markdown text" },
+        "timestamp": { "type": "number", "description": "Timestamp" }
+      },
+      "required": ["id", "sessionId", "sender", "content", "timestamp"]
+    },
+    "StudySet": {
+      "title": "StudySet",
+      "description": "Subject study workspace containing uploaded materials and generated learning tools",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique set ID" },
+        "userId": { "type": "string", "description": "Owner user ID" },
+        "title": { "type": "string", "description": "Set title" },
+        "subject": { "type": "string", "description": "Academic subject" },
+        "status": { "type": "string", "description": "Processing status" },
+        "progressPercent": { "type": "number", "description": "Mastery progress percentage" },
+        "createdAt": { "type": "number", "description": "Created timestamp" },
+        "updatedAt": { "type": "number", "description": "Updated timestamp" }
+      },
+      "required": ["id", "userId", "title", "subject", "createdAt", "updatedAt"]
+    },
+    "StudyNote": {
+      "title": "StudyNote",
+      "description": "Structured study notes with citations and key takeaways",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Note identifier" },
+        "studySetId": { "type": "string", "description": "Study set ID" },
+        "userId": { "type": "string", "description": "User ID" },
+        "title": { "type": "string", "description": "Note title" },
+        "summary": { "type": "string", "description": "Executive summary" },
+        "createdAt": { "type": "number", "description": "Creation timestamp" },
+        "updatedAt": { "type": "number", "description": "Update timestamp" }
+      },
+      "required": ["id", "studySetId", "userId", "title", "createdAt", "updatedAt"]
+    },
+    "Flashcard": {
+      "title": "Flashcard",
+      "description": "Spaced repetition flashcard with active recall mastery",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Flashcard ID" },
+        "studySetId": { "type": "string", "description": "Parent study set" },
+        "userId": { "type": "string", "description": "User ID" },
+        "front": { "type": "string", "description": "Prompt or question" },
+        "back": { "type": "string", "description": "Answer or definition" },
+        "difficulty": { "type": "string", "description": "easy, medium, hard" },
+        "mastery": { "type": "string", "description": "new, learning, mastered" }
+      },
+      "required": ["id", "studySetId", "userId", "front", "back"]
+    },
+    "NotificationItem": {
+      "title": "NotificationItem",
+      "description": "In-app learning reminder and achievement alert",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Notification ID" },
+        "userId": { "type": "string", "description": "Recipient user ID" },
+        "title": { "type": "string", "description": "Notification heading" },
+        "message": { "type": "string", "description": "Body message" },
+        "read": { "type": "boolean", "description": "Whether read by user" },
+        "createdAt": { "type": "number", "description": "Timestamp" }
+      },
+      "required": ["id", "userId", "title", "message", "read", "createdAt"]
+    },
+    "UserSubscription": {
+      "title": "UserSubscription",
+      "description": "User subscription plan and feature limits",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "User identifier" },
+        "plan": { "type": "string", "description": "free, student, pro" },
+        "status": { "type": "string", "description": "Subscription status" },
+        "renewalDate": { "type": "number", "description": "Next renewal timestamp" }
+      },
+      "required": ["userId", "plan", "status", "renewalDate"]
+    },
+    "PushDeviceRecord": {
+      "title": "PushDeviceRecord",
+      "description": "Registered Web Push / FCM device subscription token and delivery preferences",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique device subscription identifier" },
+        "userId": { "type": "string", "description": "User ID owning the device" },
+        "userEmail": { "type": "string", "description": "Associated user email" },
+        "endpoint": { "type": "string", "description": "Push service endpoint URI" },
+        "fcmToken": { "type": "string", "description": "Firebase Cloud Messaging device token" },
+        "deviceType": { "type": "string", "description": "android, ios, desktop, or mobile" },
+        "userAgent": { "type": "string", "description": "Browser user agent" },
+        "enabled": { "type": "boolean", "description": "Whether push notifications are actively enabled" },
+        "preferences": { "type": "object", "description": "Granular notification and quiet hours preferences" },
+        "createdAt": { "type": "number", "description": "Registration timestamp" },
+        "updatedAt": { "type": "number", "description": "Last update timestamp" }
+      },
+      "required": ["id", "userId", "endpoint", "enabled", "createdAt", "updatedAt"]
+    },
+    "StudentLearningMemory": {
+      "title": "StudentLearningMemory",
+      "description": "Structured persistent learning context tracking course, topic, last accessed lesson, weak areas, and next recommendations",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "Unique student user ID" },
+        "currentSubject": { "type": "string", "description": "Current active subject" },
+        "currentTopic": { "type": "string", "description": "Current active topic" },
+        "completedLessons": { "type": "array", "description": "List of completed lessons" },
+        "unfinishedLessons": { "type": "array", "description": "List of in-progress lessons" },
+        "weakAreas": { "type": "array", "description": "Identified weak areas requiring reinforcement" },
+        "updatedAt": { "type": "number", "description": "Timestamp of last update" }
+      },
+      "required": ["userId", "currentSubject", "currentTopic", "updatedAt"]
+    },
+    "AutomatedReminderLog": {
+      "title": "AutomatedReminderLog",
+      "description": "Historical audit record of automated background study reminder deliveries",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique reminder log ID" },
+        "userId": { "type": "string", "description": "Recipient student user ID" },
+        "ruleCategory": { "type": "string", "description": "Category of trigger rule applied" },
+        "generatedTitle": { "type": "string", "description": "Personalized notification heading" },
+        "generatedMessage": { "type": "string", "description": "Grounded reminder body message" },
+        "actionUrl": { "type": "string", "description": "Deep-link target destination" },
+        "status": { "type": "string", "description": "delivered, failed, or skipped" },
+        "timestamp": { "type": "number", "description": "Execution timestamp" }
+      },
+      "required": ["id", "userId", "ruleCategory", "generatedTitle", "generatedMessage", "status", "timestamp"]
+    },
+    "UserComplaint": {
+      "title": "UserComplaint",
+      "description": "Student bug reports, pedagogical complaints, feature requests, and admin resolution feedback",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique complaint ID" },
+        "userId": { "type": "string", "description": "Filing user ID" },
+        "userEmail": { "type": "string", "description": "Filing user email" },
+        "userName": { "type": "string", "description": "Filing user display name" },
+        "category": { "type": "string", "description": "technical_bug, ai_tutor, content_material, account_billing, feature_request, other" },
+        "priority": { "type": "string", "description": "low, medium, high" },
+        "title": { "type": "string", "description": "Complaint title" },
+        "description": { "type": "string", "description": "Detailed complaint description" },
+        "relatedSetTitle": { "type": "string", "description": "Optional study set title" },
+        "status": { "type": "string", "description": "pending, investigating, resolved, dismissed" },
+        "adminResponse": { "type": "string", "description": "Admin response note" },
+        "adminResponderEmail": { "type": "string", "description": "Admin email who responded" },
+        "createdAt": { "type": "number", "description": "Submission timestamp" },
+        "updatedAt": { "type": "number", "description": "Update timestamp" },
+        "resolvedAt": { "type": "number", "description": "Resolution timestamp" }
+      },
+      "required": ["id", "userId", "userEmail", "category", "priority", "title", "description", "status", "createdAt", "updatedAt"]
+    },
+    "CommunityMessage": {
+      "title": "CommunityMessage",
+      "description": "Real-time study group and community chat message across themed student rooms",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique message ID" },
+        "roomId": { "type": "string", "description": "Channel or room identifier" },
+        "userId": { "type": "string", "description": "Sender user ID" },
+        "userName": { "type": "string", "description": "Sender display name" },
+        "userEmail": { "type": "string", "description": "Sender email" },
+        "userAvatarUrl": { "type": "string", "description": "Optional sender avatar URL" },
+        "isAdmin": { "type": "boolean", "description": "Whether sender is an authoritative administrator" },
+        "userRole": { "type": "string", "description": "Platform Admin or Student" },
+        "userCourse": { "type": "string", "description": "Academic major or field" },
+        "text": { "type": "string", "description": "Message text content" },
+        "reactions": { "type": "object", "description": "Emoji reactions map" },
+        "replyTo": { "type": "object", "description": "Quoted message snippet" },
+        "attachment": { "type": "object", "description": "Shared study set or deck card" },
+        "createdAt": { "type": "number", "description": "Message creation timestamp" }
+      },
+      "required": ["id", "roomId", "userId", "userName", "userEmail", "isAdmin", "text", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/profiles/{userId}": {
+      "schema": "UserProfile",
+      "description": "Student user profiles and study preferences"
+    },
+    "/cognitiveMemories/{userId}": {
+      "schema": "StudentCognitiveMemory",
+      "description": "Adaptive cognitive memory tracking knowledge gaps and teaching adaptations"
+    },
+    "/learningMemories/{userId}": {
+      "schema": "StudentLearningMemory",
+      "description": "Structured learning context, current topics, unfinished lessons, and recommendations"
+    },
+    "/reminderLogs/{logId}": {
+      "schema": "AutomatedReminderLog",
+      "description": "Audit trail logs of automated push reminders dispatched"
+    },
+    "/teachingEvolutionLogs/{logId}": {
+      "schema": "TeachingEvolutionLog",
+      "description": "Historical audit logs of Nora teaching adaptations"
+    },
+    "/tutorSessions/{sessionId}": {
+      "schema": "TutorSession",
+      "description": "Interactive Socratic tutor chat sessions"
+    },
+    "/tutorMessages/{messageId}": {
+      "schema": "TutorMessage",
+      "description": "Individual tutor messages with quiz interactions"
+    },
+    "/studySets/{setId}": {
+      "schema": "StudySet",
+      "description": "User created study sets with uploaded materials"
+    },
+    "/notes/{noteId}": {
+      "schema": "StudyNote",
+      "description": "Comprehensive notes with citations"
+    },
+    "/flashcards/{cardId}": {
+      "schema": "Flashcard",
+      "description": "Active recall spaced repetition flashcards"
+    },
+    "/notifications/{notifId}": {
+      "schema": "NotificationItem",
+      "description": "Study notifications and reminders"
+    },
+    "/subscriptions/{userId}": {
+      "schema": "UserSubscription",
+      "description": "User subscription and usage limits"
+    },
+    "/pushDevices/{deviceId}": {
+      "schema": "PushDeviceRecord",
+      "description": "Registered Web Push device subscriptions and notification tokens"
+    },
+    "/complaints/{complaintId}": {
+      "schema": "UserComplaint",
+      "description": "User complaints, issue reports, and admin resolution feedback"
+    },
+    "/community_messages/{messageId}": {
+      "schema": "CommunityMessage",
+      "description": "Real-time group chat messages in academic community channels"
+    }
+  }
+}

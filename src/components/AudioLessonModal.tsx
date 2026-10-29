@@ -56,32 +56,33 @@ export const AudioLessonModal: React.FC<AudioLessonModalProps> = ({ studySet, on
       setIsPlaying(true);
       VoiceService.speak({
         text: script,
-        onEnd: () => setIsPlaying(false)
+        onEnd: () => setIsPlaying(false),
+        onError: () => setIsPlaying(false)
       });
     }
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm animate-fade-in font-sans">
-      <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 w-full max-w-xl overflow-hidden flex flex-col relative max-h-[90vh]">
+      <div className="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 w-full max-w-xl overflow-hidden flex flex-col relative max-h-[90vh]">
         {/* Header */}
-        <div className="p-5 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+        <div className="p-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-950">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-xl bg-amber-500 text-white flex items-center justify-center">
               <Headphones className="w-4 h-4" />
             </div>
             <div>
-              <h3 className="font-bold text-sm text-slate-900 font-serif">AI Audio Lesson</h3>
-              <p className="text-[11px] text-slate-500">{studySet.title}</p>
+              <h3 className="font-bold text-sm text-slate-900 dark:text-slate-100 font-serif">AI Audio Lesson</h3>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">{studySet.title}</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
             <button
               onClick={() => setShowVoiceModal(true)}
-              className="px-2.5 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-semibold text-xs flex items-center gap-1 border border-indigo-200"
+              className="px-2.5 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 font-semibold text-xs flex items-center gap-1 border border-indigo-200 dark:border-indigo-800"
               title="Select Voice"
             >
-              <Volume2 className="w-3.5 h-3.5 text-indigo-600" />
+              <Volume2 className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
               <span>Voice</span>
             </button>
             <button 
@@ -89,7 +90,7 @@ export const AudioLessonModal: React.FC<AudioLessonModalProps> = ({ studySet, on
                 VoiceService.stop();
                 onClose();
               }}
-              className="text-slate-400 hover:text-slate-700 text-sm font-semibold p-1"
+              className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 text-sm font-semibold p-1"
             >
               ✕
             </button>
@@ -100,7 +101,7 @@ export const AudioLessonModal: React.FC<AudioLessonModalProps> = ({ studySet, on
         <div className="p-6 overflow-y-auto space-y-5">
           {/* Mode Selector */}
           <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-2">Lesson Audio Format</label>
+            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2">Lesson Audio Format</label>
             <div className="grid grid-cols-2 gap-2 text-xs">
               {(['Quick recap', 'Detailed lecture', 'Conversation', 'Exam revision'] as const).map((m) => (
                 <button
@@ -109,8 +110,8 @@ export const AudioLessonModal: React.FC<AudioLessonModalProps> = ({ studySet, on
                   onClick={() => setMode(m)}
                   className={`p-2.5 rounded-xl border text-left font-medium transition-all ${
                     mode === m 
-                      ? 'border-indigo-600 bg-indigo-50 text-indigo-900 font-bold' 
-                      : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
+                      ? 'border-indigo-600 bg-indigo-50 dark:bg-indigo-950/50 text-indigo-900 dark:text-indigo-200 font-bold' 
+                      : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:border-slate-300 dark:hover:border-slate-600'
                   }`}
                 >
                   {m}
@@ -121,7 +122,7 @@ export const AudioLessonModal: React.FC<AudioLessonModalProps> = ({ studySet, on
 
           {!script ? (
             <div className="text-center py-8">
-              <p className="text-xs text-slate-500 mb-4 max-w-xs mx-auto">
+              <p className="text-xs text-slate-500 dark:text-slate-400 mb-4 max-w-xs mx-auto">
                 Synthesize your study set into a natural spoken audio lecture you can listen to on the go.
               </p>
               <button
@@ -143,7 +144,7 @@ export const AudioLessonModal: React.FC<AudioLessonModalProps> = ({ studySet, on
           ) : (
             <div className="space-y-4 animate-fade-in">
               {/* Audio Player Controls */}
-              <div className="bg-slate-900 text-white p-6 rounded-2xl flex flex-col items-center justify-between">
+              <div className="bg-slate-900 text-white p-6 rounded-2xl flex flex-col items-center justify-between border border-slate-800">
                 <div className="flex items-center gap-6">
                   <button
                     onClick={() => {
@@ -178,8 +179,8 @@ export const AudioLessonModal: React.FC<AudioLessonModalProps> = ({ studySet, on
 
               {/* Transcript */}
               <div>
-                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-600 mb-2">Lesson Transcript</h4>
-                <div className="p-4 bg-slate-50 rounded-xl text-xs text-slate-700 leading-relaxed max-h-48 overflow-y-auto border border-slate-200">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 mb-2">Lesson Transcript</h4>
+                <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl text-xs text-slate-700 dark:text-slate-300 leading-relaxed max-h-48 overflow-y-auto border border-slate-200 dark:border-slate-800">
                   {script}
                 </div>
               </div>
@@ -190,14 +191,8 @@ export const AudioLessonModal: React.FC<AudioLessonModalProps> = ({ studySet, on
 
       {/* ElevenLabs Voice Selection Modal */}
       {showVoiceModal && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-fade-in">
-          <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 w-full max-w-xl p-6 relative">
-            <button
-              onClick={() => setShowVoiceModal(false)}
-              className="absolute top-4 right-4 text-slate-400 hover:text-slate-700 p-1 rounded-full text-sm"
-            >
-              ✕
-            </button>
+        <div className="fixed inset-0 z-60 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-950/70 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white dark:bg-slate-900 rounded-t-3xl sm:rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 w-full max-w-xl overflow-hidden flex flex-col max-h-[92vh] sm:max-h-[85vh]">
             <ElevenLabsVoiceSelector onClose={() => setShowVoiceModal(false)} />
           </div>
         </div>

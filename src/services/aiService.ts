@@ -13,8 +13,8 @@ import {
   InteractiveLesson
 } from '../types';
 
-// Valid model per gemini-api skill instructions
-const MODEL_NAME = 'gemini-3.8-flash';
+// Valid model per gemini-api skill instructions (gemini-3.1-flash-lite offers high speed and reliability)
+const MODEL_NAME = 'gemini-3.1-flash-lite';
 
 const getApiKey = (): string => {
   return (
@@ -29,7 +29,7 @@ export class AIService {
   /**
    * Helper to clean JSON response from code markdown blocks
    */
-  private static cleanJson(text: string): string {
+  public static cleanJson(text: string): string {
     let cleaned = text.trim();
     if (cleaned.startsWith('```json')) {
       cleaned = cleaned.substring(7);
@@ -40,6 +40,71 @@ export class AIService {
       cleaned = cleaned.substring(0, cleaned.length - 3);
     }
     return cleaned.trim();
+  }
+
+  /**
+   * Robust JSON extractor that handles markdown wrappers, preambles, and conversational text
+   */
+  public static extractJson<T = any>(text: string): T | null {
+    if (!text || typeof text !== 'string') return null;
+    const trimmed = text.trim();
+
+    // 1. Direct parse attempt
+    try {
+      return JSON.parse(trimmed);
+    } catch (_) {}
+
+    // 2. Extract from markdown code fence
+    const fenceRegex = /```(?:json)?\s*([\s\S]*?)\s*```/i;
+    const fenceMatch = trimmed.match(fenceRegex);
+    if (fenceMatch && fenceMatch[1]) {
+      try {
+        return JSON.parse(fenceMatch[1].trim());
+      } catch (_) {}
+    }
+
+    // 3. Extract outermost { ... }
+    const firstBrace = trimmed.indexOf('{');
+    const lastBrace = trimmed.lastIndexOf('}');
+    if (firstBrace !== -1 && lastBrace > firstBrace) {
+      try {
+        return JSON.parse(trimmed.slice(firstBrace, lastBrace + 1));
+      } catch (_) {}
+    }
+
+    // 4. Extract outermost [ ... ]
+    const firstBracket = trimmed.indexOf('[');
+    const lastBracket = trimmed.lastIndexOf(']');
+    if (firstBracket !== -1 && lastBracket > firstBracket) {
+      try {
+        return JSON.parse(trimmed.slice(firstBracket, lastBracket + 1));
+      } catch (_) {}
+    }
+
+    return null;
+  }
+
+  /**
+   * Helper to get parsed JSON result or fallback
+   */
+  public static parseJsonResult<T = any>(res: { text: string; data?: any }, fallback?: T): T {
+    if (res.data !== undefined && res.data !== null) {
+      return res.data as T;
+    }
+    const extracted = this.extractJson<T>(res.text);
+    if (extracted !== null && extracted !== undefined) {
+      return extracted;
+    }
+    if (fallback !== undefined) {
+      return fallback;
+    }
+    // As last resort, try cleanJson
+    try {
+      return JSON.parse(this.cleanJson(res.text));
+    } catch (e) {
+      if (fallback !== undefined) return fallback;
+      throw new Error('Could not parse AI response: ' + (res.text?.slice(0, 100) || 'empty'));
+    }
   }
 
   /**
@@ -55,7 +120,7 @@ export class AIService {
     const model = options.model || MODEL_NAME;
     const json = options.json ?? false;
 
-    // 1. Try server-side proxy route first (secure, has process.env.GEMINI_API_KEY)
+    // 1. Try server-side proxy route first (secure, has process.env.GEMINI_API_KEY with auto-fallback)
     try {
       const res = await fetch('/api/ai/generate', {
         method: 'POST',
@@ -71,57 +136,79 @@ export class AIService {
       if (res.ok) {
         const body = await res.json();
         if (body.success) {
-          return { text: body.text, data: body.data };
+          return { text: body.text || '', data: body.data };
         }
+      } else {
+        const errorBody = await res.json().catch(() => ({}));
+        console.warn('Backend /api/ai/generate returned status', res.status, errorBody);
       }
     } catch (e) {
-      // fallback to client-side SDK if proxy isn't reached
+      console.warn('Failed to reach /api/ai/generate proxy:', e);
     }
 
-    // 2. Direct client-side SDK fallback with valid gemini-3.8-flash model
+    // 2. Direct client-side SDK fallback if client key exists
     const clientKey = getApiKey();
-    const client = new GoogleGenAI({ apiKey: clientKey });
+    if (clientKey) {
+      const client = new GoogleGenAI({ apiKey: clientKey });
+      const candidateModels = [
+        model,
+        'gemini-3.1-flash-lite',
+        'gemini-flash-latest',
+        'gemini-3.8-flash'
+      ].filter((m, idx, arr) => arr.indexOf(m) === idx);
 
-    let contents: any = options.prompt;
-    if (options.inlineData) {
-      contents = [
-        {
-          role: 'user',
-          parts: [
-            {
-              inlineData: {
-                data: options.inlineData.data,
-                mimeType: options.inlineData.mimeType
+      let lastError: any = null;
+
+      for (const modelToTry of candidateModels) {
+        try {
+          let contents: any = options.prompt;
+          if (options.inlineData) {
+            contents = [
+              {
+                role: 'user',
+                parts: [
+                  {
+                    inlineData: {
+                      data: options.inlineData.data,
+                      mimeType: options.inlineData.mimeType
+                    }
+                  },
+                  { text: options.prompt }
+                ]
               }
-            },
-            { text: options.prompt }
-          ]
+            ];
+          }
+
+          const config: any = {};
+          if (json) {
+            config.responseMimeType = 'application/json';
+          }
+
+          const response = await client.models.generateContent({
+            model: modelToTry,
+            contents,
+            config
+          });
+
+          const text = response.text || '';
+          let data = null;
+          if (json) {
+            data = this.extractJson(text);
+          }
+
+          return { text, data };
+        } catch (err: any) {
+          console.warn(`Client Gemini fallback model ${modelToTry} failed:`, err?.message || err);
+          lastError = err;
         }
-      ];
-    }
+      }
 
-    const config: any = {};
-    if (json) {
-      config.responseMimeType = 'application/json';
-    }
-
-    const response = await client.models.generateContent({
-      model,
-      contents,
-      config
-    });
-
-    const text = response.text || '';
-    let data = null;
-    if (json) {
-      try {
-        data = JSON.parse(this.cleanJson(text));
-      } catch (err) {
-        data = null;
+      if (lastError) {
+        throw lastError;
       }
     }
 
-    return { text, data };
+    throw new Error('AI generation is currently unable to reach model services. Please check connection and retry.');
   }
 
   /**
@@ -171,7 +258,7 @@ CRITICAL INSTRUCTIONS:
       json: true
     });
 
-    return res.data || JSON.parse(this.cleanJson(res.text));
+    return this.parseJsonResult(res);
   }
 
   /**
@@ -221,7 +308,7 @@ Return a JSON array of flashcards with this exact schema:
       json: true
     });
 
-    return res.data || JSON.parse(this.cleanJson(res.text));
+    return this.parseJsonResult(res, []);
   }
 
   /**
@@ -263,7 +350,7 @@ Return a JSON array of questions with this schema:
       json: true
     });
 
-    return res.data || JSON.parse(this.cleanJson(res.text));
+    return this.parseJsonResult(res, []);
   }
 
   /**
@@ -339,6 +426,7 @@ Pedagogical Rules:
 5. In 'Give Me a Hint' mode: Never give away the answer outright; give a conceptual stepping stone.
 6. In 'Explain Simply' mode: Explain like I'm 10 years old with zero jargon.
 7. In 'Go Deeper' mode: Explore advanced nuances, real-world edge cases, and academic rigor.
+8. Clean Markdown Rule: Never indent lines with leading spaces or add spaces before lines or paragraphs. Start every paragraph and line flushed to the margin. Separate paragraphs with clean double newlines without any whitespace on empty lines.
 
 ${params.quizContext ? `RECENT QUIZ ATTEMPT FEEDBACK:
 - Concept Tested: "${params.quizContext.lastConcept || 'Core Concept'}"
@@ -383,7 +471,53 @@ Format response strictly as JSON:
       json: true
     });
 
-    return res.data || JSON.parse(this.cleanJson(res.text));
+    const parsed = res.data || this.extractJson(res.text);
+    if (parsed && typeof parsed === 'object') {
+      const rawContent = parsed.content || res.text || 'Let us continue exploring this topic.';
+      // Clean any spaces before another line or paragraph
+      const cleanContent = rawContent
+        .replace(/\r\n/g, '\n')
+        .replace(/[ \t]+\n/g, '\n')
+        .replace(/\n[ \t]+/g, '\n')
+        .split('\n')
+        .map((l: string) => (l.startsWith('```') ? l : l.trimStart()))
+        .join('\n')
+        .trim();
+
+      return {
+        content: cleanContent,
+        questionToStudent: parsed.questionToStudent,
+        chatQuiz: parsed.chatQuiz,
+        interactiveOptions: Array.isArray(parsed.interactiveOptions) && parsed.interactiveOptions.length > 0 
+          ? parsed.interactiveOptions 
+          : ['Can you give an analogy?', 'Test me with a question', 'Explain simply'],
+        citations: Array.isArray(parsed.citations) ? parsed.citations : [],
+        selfReflection: parsed.selfReflection
+      };
+    }
+
+    // Graceful recovery: if the model responded conversationally in text/markdown instead of strict JSON
+    if (res.text && res.text.trim()) {
+      const cleanFallback = res.text
+        .replace(/\r\n/g, '\n')
+        .replace(/[ \t]+\n/g, '\n')
+        .replace(/\n[ \t]+/g, '\n')
+        .split('\n')
+        .map((l: string) => (l.startsWith('```') ? l : l.trimStart()))
+        .join('\n')
+        .trim();
+
+      return {
+        content: cleanFallback,
+        interactiveOptions: ['Can you give an analogy?', 'Test me with a question', 'Explain simply'],
+        citations: []
+      };
+    }
+
+    return {
+      content: 'I am here to help you master this! Could you elaborate on what you would like to explore or clarify?',
+      interactiveOptions: ['Give me an overview', 'Test my understanding', 'Give me a relatable analogy']
+    };
   }
 
   /**
@@ -447,7 +581,7 @@ Return JSON strictly:
       json: true
     });
 
-    return res.data || JSON.parse(this.cleanJson(res.text));
+    return this.parseJsonResult(res);
   }
 
   /**
@@ -507,7 +641,7 @@ Return JSON format:
       json: true
     });
 
-    return res.data || JSON.parse(this.cleanJson(res.text));
+    return this.parseJsonResult(res);
   }
 
   /**
@@ -535,7 +669,7 @@ Evaluate constructively. Return JSON:
       model: MODEL_NAME,
       json: true
     });
-    return res.data || JSON.parse(this.cleanJson(res.text));
+    return this.parseJsonResult(res);
   }
 
   /**
@@ -584,7 +718,7 @@ Evaluate strictly as JSON:
       model: MODEL_NAME,
       json: true
     });
-    return res.data || JSON.parse(this.cleanJson(res.text));
+    return this.parseJsonResult(res);
   }
 
   /**
@@ -686,7 +820,7 @@ Return strictly JSON adhering to this schema:
       model: MODEL_NAME,
       json: true
     });
-    return res.data || JSON.parse(this.cleanJson(res.text));
+    return this.parseJsonResult(res);
   }
 
   /**
@@ -736,7 +870,7 @@ Return JSON:
       model: MODEL_NAME,
       json: true
     });
-    return res.data || JSON.parse(this.cleanJson(res.text));
+    return this.parseJsonResult(res);
   }
 
   /**
@@ -904,6 +1038,6 @@ Return JSON:
       model: MODEL_NAME,
       json: true
     });
-    return res.data || JSON.parse(this.cleanJson(res.text));
+    return this.parseJsonResult(res);
   }
 }

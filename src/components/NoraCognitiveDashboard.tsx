@@ -130,9 +130,9 @@ export const NoraCognitiveDashboard: React.FC<NoraCognitiveDashboardProps> = ({
 
   if (loading) {
     return (
-      <div className="p-8 text-center bg-white rounded-3xl border border-slate-200 shadow-sm">
+      <div className="p-8 text-center bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm">
         <div className="w-8 h-8 border-3 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
-        <p className="text-xs text-slate-500 font-medium">Accessing Nora's Cognitive Mind & Memory Model...</p>
+        <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Accessing Nora's Cognitive Mind & Memory Model...</p>
       </div>
     );
   }
@@ -211,19 +211,19 @@ export const NoraCognitiveDashboard: React.FC<NoraCognitiveDashboardProps> = ({
       {/* Grid: Diagnosed Gaps vs Demonstrated Strengths */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Identified Knowledge Gaps */}
-        <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm flex flex-col justify-between">
+        <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between">
           <div>
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
               <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center">
+                <div className="w-8 h-8 rounded-lg bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 flex items-center justify-center">
                   <ShieldAlert className="w-4 h-4" />
                 </div>
                 <div>
-                  <h4 className="font-bold text-sm text-slate-900 font-serif">Learned Knowledge Gaps</h4>
-                  <p className="text-[11px] text-slate-500">Concepts Nora detected you hesitated or stumbled on</p>
+                  <h4 className="font-bold text-sm text-slate-900 dark:text-slate-100 font-serif">Learned Knowledge Gaps</h4>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">Concepts Nora detected you hesitated or stumbled on</p>
                 </div>
               </div>
-              <span className="text-xs font-bold text-rose-700 bg-rose-50 px-2.5 py-0.5 rounded-full">
+              <span className="text-xs font-bold text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/60 px-2.5 py-0.5 rounded-full">
                 {memory?.learnedKnowledgeGaps?.length || 0}
               </span>
             </div>
@@ -233,7 +233,7 @@ export const NoraCognitiveDashboard: React.FC<NoraCognitiveDashboardProps> = ({
                 memory.learnedKnowledgeGaps.map((gap, idx) => (
                   <div 
                     key={idx} 
-                    className="p-3 bg-rose-50/60 rounded-xl border border-rose-100/90 text-xs text-rose-950 flex items-center justify-between group"
+                    className="p-3 bg-rose-50/60 dark:bg-rose-950/40 rounded-xl border border-rose-100/90 dark:border-rose-900/60 text-xs text-rose-950 dark:text-rose-200 flex items-center justify-between group"
                   >
                     <div className="flex items-center gap-2">
                       <span className="w-1.5 h-1.5 rounded-full bg-rose-500 shrink-0"></span>
@@ -241,42 +241,42 @@ export const NoraCognitiveDashboard: React.FC<NoraCognitiveDashboardProps> = ({
                     </div>
                     <button
                       onClick={() => removeGap(gap)}
-                      className="text-[11px] text-slate-400 hover:text-emerald-700 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1"
+                      className="text-[11px] text-slate-400 hover:text-emerald-700 dark:hover:text-emerald-400 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1"
                       title="Mark concept as mastered"
                     >
-                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
                       <span>Mastered</span>
                     </button>
                   </div>
                 ))
               ) : (
-                <div className="p-6 text-center text-xs text-slate-400 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+                <div className="p-6 text-center text-xs text-slate-400 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-dashed border-slate-200 dark:border-slate-700">
                   Nora has not detected any persistent knowledge gaps yet. As you ask questions and complete quizzes, Nora will log areas needing reinforcement.
                 </div>
               )}
             </div>
           </div>
 
-          <div className="mt-4 pt-3 border-t border-slate-100 text-[11px] text-slate-400 flex items-center gap-1">
+          <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800 text-[11px] text-slate-400 flex items-center gap-1">
             <Zap className="w-3.5 h-3.5 text-amber-500 shrink-0" />
             <span>Nora automatically prioritizes these topics in quizzes & hints.</span>
           </div>
         </div>
 
         {/* Demonstrated Strengths */}
-        <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm flex flex-col justify-between">
+        <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between">
           <div>
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
               <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                <div className="w-8 h-8 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
                   <CheckCircle2 className="w-4 h-4" />
                 </div>
                 <div>
-                  <h4 className="font-bold text-sm text-slate-900 font-serif">Demonstrated Strengths</h4>
-                  <p className="text-[11px] text-slate-500">Concepts Nora verified you have firmly grasped</p>
+                  <h4 className="font-bold text-sm text-slate-900 dark:text-slate-100 font-serif">Demonstrated Strengths</h4>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">Concepts Nora verified you have firmly grasped</p>
                 </div>
               </div>
-              <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full">
+              <span className="text-xs font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60 px-2.5 py-0.5 rounded-full">
                 {memory?.demonstratedStrengths?.length || 0}
               </span>
             </div>
@@ -286,26 +286,26 @@ export const NoraCognitiveDashboard: React.FC<NoraCognitiveDashboardProps> = ({
                 memory.demonstratedStrengths.map((strength, idx) => (
                   <div 
                     key={idx} 
-                    className="p-3 bg-emerald-50/60 rounded-xl border border-emerald-100/90 text-xs text-emerald-950 flex items-center justify-between"
+                    className="p-3 bg-emerald-50/60 dark:bg-emerald-950/40 rounded-xl border border-emerald-100/90 dark:border-emerald-900/60 text-xs text-emerald-950 dark:text-emerald-200 flex items-center justify-between"
                   >
                     <div className="flex items-center gap-2">
                       <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0"></span>
                       <span className="font-medium">{strength}</span>
                     </div>
-                    <span className="text-[10px] uppercase font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded">
+                    <span className="text-[10px] uppercase font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-950 px-2 py-0.5 rounded">
                       Verified
                     </span>
                   </div>
                 ))
               ) : (
-                <div className="p-6 text-center text-xs text-slate-400 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+                <div className="p-6 text-center text-xs text-slate-400 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-dashed border-slate-200 dark:border-slate-700">
                   Demonstrate correct understanding during Socratic checks or complete practice quizzes to build your strengths list.
                 </div>
               )}
             </div>
           </div>
 
-          <div className="mt-4 pt-3 border-t border-slate-100 text-[11px] text-slate-400 flex items-center gap-1">
+          <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800 text-[11px] text-slate-400 flex items-center gap-1">
             <TrendingUp className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
             <span>Nora skips redundant beginner explanations for these topics.</span>
           </div>
@@ -313,22 +313,22 @@ export const NoraCognitiveDashboard: React.FC<NoraCognitiveDashboardProps> = ({
       </div>
 
       {/* Explanation Calibration Parameters */}
-      <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm">
-        <h4 className="font-bold text-sm text-slate-900 font-serif mb-1 flex items-center gap-2">
-          <Sliders className="w-4 h-4 text-indigo-600" />
+      <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 border border-slate-200 dark:border-slate-800 shadow-sm">
+        <h4 className="font-bold text-sm text-slate-900 dark:text-slate-100 font-serif mb-1 flex items-center gap-2">
+          <Sliders className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
           <span>Learned Pedagogical Preferences</span>
         </h4>
-        <p className="text-xs text-slate-500 mb-4">
+        <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">
           Nora automatically calibrates these parameters based on your response comprehension rates.
         </p>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
-          <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/80">
-            <span className="text-slate-400 block text-[11px] uppercase font-semibold mb-1">Technical Depth</span>
-            <span className="text-sm font-bold text-indigo-950 capitalize">
+          <div className="p-4 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200/80 dark:border-slate-700">
+            <span className="text-slate-400 dark:text-slate-400 block text-[11px] uppercase font-semibold mb-1">Technical Depth</span>
+            <span className="text-sm font-bold text-indigo-950 dark:text-indigo-200 capitalize">
               {memory?.preferredExplanations.technicalDepth || 'Balanced'}
             </span>
-            <p className="text-[11px] text-slate-500 mt-1">
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
               {memory?.preferredExplanations.technicalDepth === 'rigorous' 
                 ? 'Emphasizes formal academic proofs & terminology.'
                 : memory?.preferredExplanations.technicalDepth === 'simplified'
@@ -337,12 +337,12 @@ export const NoraCognitiveDashboard: React.FC<NoraCognitiveDashboardProps> = ({
             </p>
           </div>
 
-          <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/80">
-            <span className="text-slate-400 block text-[11px] uppercase font-semibold mb-1">Instruction Pacing</span>
-            <span className="text-sm font-bold text-indigo-950 capitalize">
+          <div className="p-4 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200/80 dark:border-slate-700">
+            <span className="text-slate-400 dark:text-slate-400 block text-[11px] uppercase font-semibold mb-1">Instruction Pacing</span>
+            <span className="text-sm font-bold text-indigo-950 dark:text-indigo-200 capitalize">
               {memory?.preferredExplanations.pacingSpeed || 'Standard'}
             </span>
-            <p className="text-[11px] text-slate-500 mt-1">
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
               {memory?.preferredExplanations.pacingSpeed === 'deliberate'
                 ? 'Micro-steps with frequent Socratic check-ins.'
                 : memory?.preferredExplanations.pacingSpeed === 'accelerated'
@@ -351,12 +351,12 @@ export const NoraCognitiveDashboard: React.FC<NoraCognitiveDashboardProps> = ({
             </p>
           </div>
 
-          <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/80">
-            <span className="text-slate-400 block text-[11px] uppercase font-semibold mb-1">Effective Hooks & Analogies</span>
+          <div className="p-4 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200/80 dark:border-slate-700">
+            <span className="text-slate-400 dark:text-slate-400 block text-[11px] uppercase font-semibold mb-1">Effective Hooks &amp; Analogies</span>
             <div className="flex flex-wrap gap-1 mt-1">
               {memory?.preferredExplanations.effectiveHooks && memory.preferredExplanations.effectiveHooks.length > 0 ? (
                 memory.preferredExplanations.effectiveHooks.map((hook, i) => (
-                  <span key={i} className="px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 font-semibold text-[10px]">
+                  <span key={i} className="px-2 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 font-semibold text-[10px]">
                     {hook}
                   </span>
                 ))
@@ -369,16 +369,16 @@ export const NoraCognitiveDashboard: React.FC<NoraCognitiveDashboardProps> = ({
       </div>
 
       {/* Historical Evolution Timeline */}
-      <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm">
+      <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 border border-slate-200 dark:border-slate-800 shadow-sm">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h4 className="font-bold text-sm text-slate-900 font-serif flex items-center gap-2">
-              <History className="w-4 h-4 text-indigo-600" />
+            <h4 className="font-bold text-sm text-slate-900 dark:text-slate-100 font-serif flex items-center gap-2">
+              <History className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
               <span>Teaching Evolution Activity Log</span>
             </h4>
-            <p className="text-xs text-slate-500">Real-time record of pedagogical self-adjustments made by Nora</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400">Real-time record of pedagogical self-adjustments made by Nora</p>
           </div>
-          <span className="text-xs font-semibold text-slate-400">
+          <span className="text-xs font-semibold text-slate-400 dark:text-slate-500">
             {evolutionLogs.length} events logged
           </span>
         </div>
@@ -386,21 +386,21 @@ export const NoraCognitiveDashboard: React.FC<NoraCognitiveDashboardProps> = ({
         {evolutionLogs.length > 0 ? (
           <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
             {evolutionLogs.map((log) => (
-              <div key={log.id} className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div key={log.id} className="p-3.5 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div className="space-y-0.5">
                   <div className="flex items-center gap-2">
                     <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
                       log.studentGraspObserved === 'mastered' 
-                        ? 'bg-emerald-100 text-emerald-800'
+                        ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
                         : log.studentGraspObserved === 'struggling'
-                        ? 'bg-rose-100 text-rose-800'
-                        : 'bg-amber-100 text-amber-800'
+                        ? 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300'
+                        : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
                     }`}>
                       {log.studentGraspObserved}
                     </span>
-                    <span className="font-semibold text-slate-900">{log.interactionSummary}</span>
+                    <span className="font-semibold text-slate-900 dark:text-slate-100">{log.interactionSummary}</span>
                   </div>
-                  <p className="text-slate-600 text-[11px] pt-1 italic">
+                  <p className="text-slate-600 dark:text-slate-300 text-[11px] pt-1 italic">
                     Adjustment: "{log.tutorAdjustmentMade}"
                   </p>
                 </div>
@@ -411,7 +411,7 @@ export const NoraCognitiveDashboard: React.FC<NoraCognitiveDashboardProps> = ({
             ))}
           </div>
         ) : (
-          <div className="p-8 text-center text-xs text-slate-400 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+          <div className="p-8 text-center text-xs text-slate-400 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-dashed border-slate-200 dark:border-slate-700">
             No self-learning adjustments logged yet. Start a conversation with Nora to begin mutual adaptation.
           </div>
         )}

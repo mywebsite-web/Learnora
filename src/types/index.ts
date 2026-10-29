@@ -12,10 +12,14 @@ export type EducationLevel =
 export type ProficiencyLevel = 'Beginner' | 'Intermediate' | 'Advanced' | 'Exam preparation';
 
 export type LearningGoal = 
+  | 'Understand classes'
   | 'Understand my classes'
   | 'Prepare for exams'
+  | 'Improve grades'
   | 'Improve my grades'
+  | 'Learn a subject'
   | 'Learn a new subject'
+  | 'Prepare for certification'
   | 'Prepare for a certification'
   | 'Build practical skills'
   | string;
@@ -52,14 +56,55 @@ export interface UserProfile {
   selectedTheme?: 'light' | 'dark' | 'system';
   role?: 'student' | 'admin' | 'mentor';
   status?: 'active' | 'suspended';
+  suspensionReason?: string;
+  suspendedAt?: number;
   tier?: 'free' | 'pro' | 'elite';
   notesCount?: number;
   studySetsCount?: number;
+  lastActiveAt?: number;
+  isOnline?: boolean;
 }
 
 export const ADMIN_EMAIL = 'adedayoademola171@gmail.com';
 export const isAdminEmail = (email?: string | null): boolean => 
   Boolean(email && email.trim().toLowerCase() === ADMIN_EMAIL.toLowerCase());
+
+/**
+ * Returns true if a user has recorded activity within the last 5 minutes
+ * and is not currently suspended.
+ */
+export const isUserOnline = (user?: UserProfile | null, now = Date.now()): boolean => {
+  if (!user) return false;
+  if (user.status === 'suspended') return false;
+  const lastActive = user.lastActiveAt || user.updatedAt || 0;
+  if (lastActive > 0 && now - lastActive <= 5 * 60 * 1000) {
+    return true;
+  }
+  if (user.isOnline && lastActive > 0 && now - lastActive <= 15 * 60 * 1000) {
+    return true;
+  }
+  return false;
+};
+
+/**
+ * Human-readable relative time formatter for Last Seen status
+ */
+export const formatLastSeen = (timestamp?: number): string => {
+  if (!timestamp) return 'Never';
+  const now = Date.now();
+  const diff = Math.max(0, now - timestamp);
+  const seconds = Math.floor(diff / 1000);
+  const minutes = Math.floor(seconds / 60);
+  const hours = Math.floor(minutes / 60);
+  const days = Math.floor(hours / 24);
+
+  if (seconds < 60) return 'Just now';
+  if (minutes < 60) return `${minutes}m ago`;
+  if (hours < 24) return `${hours}h ago`;
+  if (days === 1) return 'Yesterday';
+  if (days < 7) return `${days}d ago`;
+  return new Date(timestamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+};
 
 export interface StudyMaterial {
   id: string;
@@ -398,14 +443,29 @@ export interface Achievement {
   target: number;
 }
 
+export type NotificationType = 
+  | 'announcement'
+  | 'spaced-review'
+  | 'study-reminder'
+  | 'streak'
+  | 'exam-alert'
+  | 'material-ready'
+  | 'achievement'
+  | 'chat'
+  | 'system';
+
 export interface NotificationItem {
   id: string;
-  userId: string;
+  userId: string; // Specific user UID or 'all' for platform broadcasts
   title: string;
   message: string;
-  type: 'study-reminder' | 'exam-alert' | 'streak' | 'material-ready' | 'achievement';
+  type: NotificationType;
   read: boolean;
   createdAt: number;
+  priority?: 'normal' | 'high' | 'urgent';
+  actionUrl?: string; // Target view like 'review-queue', 'tutor', 'weekly-run', 'library'
+  actionLabel?: string; // e.g. "Review Now", "Start Lesson", "View Details"
+  sender?: string; // e.g. "Platform Admin", "Nora AI Tutor", "System Alert"
 }
 
 export interface UserSubscription {
@@ -454,3 +514,305 @@ export interface TeachingEvolutionLog {
   tutorAdjustmentMade: string; // What Nora changed about her approach
   timestamp: number;
 }
+
+// Spaced Repetition Review Queue (Anki-style 1, 3, 7 days)
+export type SpacedRepetitionStage = 1 | 2 | 3 | 4; // 1 = Day 1 (1d ago), 2 = Day 3 (3d ago), 3 = Day 7 (7d ago), 4 = Mastered
+
+export type AnkiRating = 'again' | 'hard' | 'good' | 'easy';
+
+export interface ReviewLessonItem {
+  id: string;
+  userId: string;
+  studySetId?: string;
+  title: string;
+  subject: string;
+  lessonType: 'interactive-lesson' | 'study-set' | 'notes-summary' | 'audio-lecture' | 'flashcards' | 'quiz';
+  completedAt: number; // timestamp when lesson was originally completed
+  repetitionStage: SpacedRepetitionStage; // 1, 2, 3, 4
+  targetIntervalDays: number; // 1, 3, 7, 14, etc.
+  lastReviewedAt?: number;
+  nextReviewDate: number; // timestamp when review is due
+  easeFactor: number; // standard Anki starting factor 2.5
+  timesReviewed: number;
+  timesCorrect: number;
+  timesAgain: number;
+  retentionScore: number; // 0 - 100%
+  keyConcepts: string[];
+  summarySnippet: string;
+  promptQuestion?: string;
+  promptAnswer?: string;
+}
+
+export * from './weeklyRun';
+
+export interface MaintenanceModeConfig {
+  isActive: boolean;
+  title: string;
+  message: string;
+  estimatedDuration?: string;
+  startTime?: number;
+  expectedEndTime?: number;
+  updatedAt: number;
+  updatedBy?: string;
+  reasonCategory?: 'scheduled' | 'emergency' | 'upgrade' | 'optimization';
+}
+
+export interface PushNotificationPreferences {
+  dailyStudyReminder: boolean;
+  preferredStudyTime: string; // e.g. "09:00", "18:00", "20:00"
+  spacedReviewAlerts: boolean; // Anki 1, 3, 7 day reviews
+  streakProtectionAlerts: boolean; // Remind before streak resets at midnight
+  tutorCheckIns: boolean; // Socratic voice dialogue / Nora check-ins
+  adminAnnouncements: boolean; // Urgent maintenance & platform updates
+  quietHoursEnabled: boolean; // Mute during quiet hours
+  quietHoursStart: string; // "22:00"
+  quietHoursEnd: string; // "08:00"
+}
+
+export const DEFAULT_PUSH_PREFERENCES: PushNotificationPreferences = {
+  dailyStudyReminder: true,
+  preferredStudyTime: '18:00',
+  spacedReviewAlerts: true,
+  streakProtectionAlerts: true,
+  tutorCheckIns: true,
+  adminAnnouncements: true,
+  quietHoursEnabled: true,
+  quietHoursStart: '22:00',
+  quietHoursEnd: '08:00'
+};
+
+export interface PushSubscriptionKeys {
+  p256dh: string;
+  auth: string;
+}
+
+export interface PushDeviceRecord {
+  id: string;
+  userId: string;
+  userEmail?: string;
+  endpoint: string;
+  keys?: PushSubscriptionKeys;
+  fcmToken?: string;
+  deviceType: 'android' | 'ios' | 'desktop' | 'mobile' | 'unknown';
+  browser: string;
+  userAgent: string;
+  enabled: boolean;
+  preferences: PushNotificationPreferences;
+  createdAt: number;
+  updatedAt: number;
+  lastSeenAt: number;
+}
+
+export interface PushSendPayload {
+  title: string;
+  message: string;
+  url?: string;
+  actionUrl?: string;
+  actionLabel?: string;
+  type?: NotificationType;
+  priority?: 'normal' | 'high' | 'urgent';
+  icon?: string;
+  badge?: string;
+  tag?: string;
+  targetUserId?: string; // 'all' or specific userId
+}
+
+export interface LastStudyActivity {
+  type: 'lesson' | 'quiz' | 'flashcards' | 'tutor' | 'reading' | 'audio-lesson' | 'practice-test' | 'study-plan';
+  courseId?: string;
+  courseTitle?: string;
+  subject: string;
+  topic: string;
+  lessonId?: string;
+  lessonTitle?: string;
+  sectionHeading?: string;
+  sectionIndex?: number;
+  totalSections?: number;
+  isCompleted: boolean;
+  score?: number; // e.g. quiz accuracy %
+  timestamp: number;
+}
+
+export interface WeakLearningArea {
+  topic: string;
+  subject: string;
+  accuracy?: number;
+  identifiedFrom: 'quiz' | 'tutor' | 'practice-test';
+  timestamp: number;
+}
+
+export interface RecommendedNextStep {
+  action: 'resume-lesson' | 'review-weakness' | 'spaced-review' | 'start-plan-session' | 'continue-subject';
+  title: string;
+  subject: string;
+  topic: string;
+  targetUrl: string;
+  rationale: string;
+}
+
+export interface StudentLearningMemory {
+  userId: string;
+  userEmail?: string;
+  currentCourse?: {
+    id: string;
+    title: string;
+    subject: string;
+  };
+  currentSubject: string;
+  currentTopic: string;
+  lastLessonAccessed?: {
+    id: string;
+    title: string;
+    courseId?: string;
+    courseTitle?: string;
+    subject: string;
+    topic?: string;
+    sectionHeading?: string;
+    sectionIndex: number;
+    totalSections: number;
+    isCompleted: boolean;
+    timestamp: number;
+  };
+  completedLessons: Array<{
+    lessonId: string;
+    title: string;
+    subject: string;
+    topic?: string;
+    completedAt: number;
+  }>;
+  unfinishedLessons: Array<{
+    lessonId: string;
+    title: string;
+    subject: string;
+    topic?: string;
+    sectionIndex: number;
+    totalSections: number;
+    lastAccessedAt: number;
+  }>;
+  lastStudyActivity?: LastStudyActivity;
+  weakAreas: WeakLearningArea[];
+  recommendedNextStep?: RecommendedNextStep;
+  preferredStudyTimes?: string[];
+  timeZone?: string;
+  lastReminderSentAt?: number;
+  lastReminderType?: string;
+  remindersPaused?: boolean;
+  updatedAt: number;
+}
+
+export type ReminderRuleCategory = 
+  | 'resume_lesson' 
+  | 'practice_weakness' 
+  | 'spaced_review_due' 
+  | 'planned_study_due' 
+  | 'streak_protection'
+  | 'general_revision';
+
+export interface AutomatedReminderLog {
+  id: string;
+  userId: string;
+  userEmail?: string;
+  ruleCategory: ReminderRuleCategory;
+  groundedFacts: {
+    subject: string;
+    topic: string;
+    lessonTitle?: string;
+    weakArea?: string;
+    lastActiveHoursAgo: number;
+  };
+  generatedTitle: string;
+  generatedMessage: string;
+  actionUrl: string;
+  actionLabel: string;
+  devicesDelivered: number;
+  status: 'delivered' | 'failed' | 'quiet_hours_skipped' | 'rate_limited';
+  timestamp: number;
+}
+
+// User Complaints & Issue Reporting Types
+export type ComplaintCategory = 
+  | 'technical_bug' 
+  | 'ai_tutor' 
+  | 'content_material' 
+  | 'account_billing' 
+  | 'feature_request' 
+  | 'other';
+
+export type ComplaintPriority = 'low' | 'medium' | 'high';
+
+export type ComplaintStatus = 'pending' | 'investigating' | 'resolved' | 'dismissed';
+
+export interface UserComplaint {
+  id: string;
+  userId: string;
+  userEmail: string;
+  userName?: string;
+  category: ComplaintCategory;
+  priority: ComplaintPriority;
+  title: string;
+  description: string;
+  relatedSetTitle?: string;
+  status: ComplaintStatus;
+  adminResponse?: string;
+  adminResponderEmail?: string;
+  createdAt: number;
+  updatedAt: number;
+  resolvedAt?: number;
+}
+
+// Community & Study Group Chat Types
+export type CommunityRoomId = 
+  | 'general-lounge' 
+  | 'exam-prep' 
+  | 'study-partners' 
+  | 'nora-tips' 
+  | 'stem-hub' 
+  | 'humanities-law';
+
+export interface CommunityRoom {
+  id: CommunityRoomId;
+  name: string;
+  topic: string;
+  icon: string;
+  category: 'campus' | 'academics' | 'ai';
+  description: string;
+  badge?: string;
+}
+
+export interface CommunityMessage {
+  id: string;
+  roomId: CommunityRoomId;
+  userId: string;
+  userName: string;
+  userEmail: string;
+  userAvatarUrl?: string;
+  isAdmin: boolean;
+  userRole?: string;
+  userCourse?: string;
+  text: string;
+  reactions?: Record<string, string[]>; // emoji: [userId, ...]
+  replyTo?: {
+    messageId: string;
+    userName: string;
+    textSnippet: string;
+    isAdmin?: boolean;
+  };
+  attachment?: {
+    type: 'study_set' | 'flashcards' | 'topic';
+    title: string;
+    id?: string;
+  };
+  createdAt: number;
+  updatedAt?: number;
+}
+
+export interface UserPresence {
+  uid: string;
+  email?: string;
+  displayName: string;
+  avatarUrl?: string;
+  isAdmin?: boolean;
+  activeRoomId?: CommunityRoomId;
+  lastSeen: number;
+}
+

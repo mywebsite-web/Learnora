@@ -2,9 +2,14 @@
 <html lang="en">
   <head>
     <script>
-      // Ignore Vite HMR WebSocket connection errors per environment constraints (HMR disabled in AI Studio)
+      // Ignore benign development notices and offline firestore notices per environment constraints
       (function() {
-        const suppress = (msg) => typeof msg === 'string' && (msg.includes('[vite]') || msg.toLowerCase().includes('websocket'));
+        const suppress = (msg) => typeof msg === 'string' && (
+          msg.includes('[vite]') || 
+          msg.toLowerCase().includes('websocket') ||
+          msg.includes('Could not reach Cloud Firestore backend') ||
+          msg.includes('client will operate in offline mode')
+        );
         const origError = console.error;
         console.error = function(...args) {
           if (args.some(suppress)) return;
@@ -21,7 +26,35 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>Learnora - Turn what you have into what you know</title>
     <meta name="description" content="Turn what you have into what you know. Learnora is an AI personal lecturer and study workspace that transforms your notes, slides, and educational materials into an interactive learning experience." />
-    <meta name="theme-color" content="#4f46e5" />
+    <meta name="keywords" content="Learnora, AI tutor, personal lecturer, study workspace, active recall, spaced repetition, Socratic learning, diagnostic quiz, flashcards, Nora AI, exam preparation" />
+    <meta name="author" content="Learnora" />
+    <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1" />
+    <link rel="canonical" href="https://learnora.app/" />
+    <meta name="google-site-verification" content="google67fdd007c40ce08b" />
+
+    <!-- OpenGraph Social Share Cards -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Learnora" />
+    <meta property="og:title" content="Learnora - Turn what you have into what you know" />
+    <meta property="og:description" content="Turn what you have into what you know. Learnora is an AI personal lecturer and study workspace that transforms your notes, slides, and educational materials into an interactive learning experience." />
+    <meta property="og:url" content="https://learnora.app/" />
+    <meta property="og:image" content="/pwa-512x512.png" />
+    <meta property="og:image:width" content="512" />
+    <meta property="og:image:height" content="512" />
+    <meta property="og:image:alt" content="Learnora – AI Personal Lecturer & Cognitive Study Workspace" />
+    <meta property="og:locale" content="en_US" />
+
+    <!-- Twitter / X Cards -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:site" content="@learnora" />
+    <meta name="twitter:creator" content="@learnora" />
+    <meta name="twitter:title" content="Learnora - Turn what you have into what you know" />
+    <meta name="twitter:description" content="Turn what you have into what you know. Learnora is an AI personal lecturer and study workspace that transforms your notes, slides, and educational materials into an interactive learning experience." />
+    <meta name="twitter:image" content="/pwa-512x512.png" />
+    <meta name="twitter:image:alt" content="Learnora – AI Personal Lecturer" />
+
+    <!-- PWA & Mobile Icons -->
+    <meta name="theme-color" content="#083827" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -32,10 +65,73 @@
     <link rel="alternate icon" href="/favicon.ico" />
     <link rel="shortcut icon" href="/favicon.ico" />
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
-    <meta property="og:title" content="Learnora - Turn what you have into what you know" />
-    <meta property="og:description" content="Turn what you have into what you know. Learnora is an AI personal lecturer and study workspace that transforms your notes, slides, and educational materials into an interactive learning experience." />
-    <meta property="og:type" content="website" />
-    <meta name="twitter:card" content="summary_large_image" />
+
+    <!-- Schema.org JSON-LD Structured Data: WebApplication -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebApplication",
+      "name": "Learnora",
+      "url": "https://learnora.app",
+      "applicationCategory": "EducationalApplication",
+      "operatingSystem": "All",
+      "description": "Turn what you have into what you know. Learnora is an AI personal lecturer and study workspace that transforms your notes, slides, and educational materials into an interactive learning experience.",
+      "browserRequirements": "Requires JavaScript. Requires HTML5.",
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "USD"
+      },
+      "featureList": [
+        "Nora Socratic AI Personal Lecturer",
+        "Spaced Repetition Review Queue (1, 3, 7 days)",
+        "Automated Flashcard & Diagnostic Quiz Generation",
+        "Weekly Study Run Analytics & Real Subject Distribution",
+        "Interactive Audio & Video Explainer Lessons",
+        "AI Essay Grader with Real-Time Feedback",
+        "Peer Community Study Lounge"
+      ],
+      "author": {
+        "@type": "Organization",
+        "name": "Learnora"
+      }
+    }
+    </script>
+
+    <!-- Schema.org JSON-LD Structured Data: FAQPage -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "What is Learnora?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Learnora is an intelligent study workspace and AI personal lecturer that converts your class notes, textbooks, and lecture slides into interactive flashcards, practice quizzes, and personalized Socratic dialogues."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "How does Nora AI Tutor work?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Nora uses cognitive Socratic tutoring to ask guiding questions, identify knowledge gaps, and adapt teaching methods to your learning pace and style."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Does Learnora support spaced repetition?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Yes. Learnora includes an automated spaced repetition review queue with optimal intervals (1, 3, and 7 days) to lock concepts into long-term memory."
+          }
+        }
+      ]
+    }
+    </script>
+
     <!-- Google Identity Services for direct accounts.google.com authentication -->
     <script src="https://accounts.google.com/gsi/client" async defer></script>
   </head>

@@ -115,6 +115,11 @@ export const ExplainerVideoModal: React.FC<ExplainerVideoModalProps> = ({ studyS
           if (!currentSlide.interactiveCheck || showAnswerFeedback) {
             advanceSlideOrLoop();
           }
+        },
+        onError: () => {
+          if (!currentSlide.interactiveCheck || showAnswerFeedback) {
+            advanceSlideOrLoop();
+          }
         }
       }).then((res) => {
         if (res.provider) setVoiceProvider(res.provider);
@@ -551,14 +556,8 @@ export const ExplainerVideoModal: React.FC<ExplainerVideoModalProps> = ({ studyS
 
       {/* ElevenLabs Voice Selection Modal */}
       {showVoiceSettings && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-fade-in">
-          <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 w-full max-w-xl p-6 relative">
-            <button
-              onClick={() => setShowVoiceSettings(false)}
-              className="absolute top-4 right-4 text-slate-400 hover:text-slate-700 p-1 rounded-full text-sm"
-            >
-              ✕
-            </button>
+        <div className="fixed inset-0 z-60 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-950/70 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl border border-slate-200 w-full max-w-xl overflow-hidden flex flex-col max-h-[92vh] sm:max-h-[85vh]">
             <ElevenLabsVoiceSelector onClose={() => setShowVoiceSettings(false)} />
           </div>
         </div>

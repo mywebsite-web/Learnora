@@ -31,14 +31,14 @@ export default defineConfig(() => {
       tailwindcss(),
       VitePWA({
         registerType: 'autoUpdate',
-        includeAssets: ['favicon.ico', 'favicon-32x32.png', 'favicon-16x16.png', 'icon.svg', 'apple-touch-icon.png'],
+        includeAssets: ['favicon.ico', 'favicon-32x32.png', 'favicon-16x16.png', 'icon.svg', 'apple-touch-icon.png', 'firebase-messaging-sw.js'],
         manifest: {
           id: '/',
           name: 'Learnora - AI Personal Lecturer',
           short_name: 'Learnora',
           description: 'Turn what you have into what you know. Adaptive AI lecturer, spaced repetition flashcards, and study workspace.',
-          theme_color: '#4f46e5',
-          background_color: '#0f172a',
+          theme_color: '#083827',
+          background_color: '#032217',
           display: 'standalone',
           orientation: 'portrait-primary',
           start_url: '/',
@@ -65,6 +65,7 @@ export default defineConfig(() => {
           ]
         },
         workbox: {
+          maximumFileSizeToCacheInBytes: 8 * 1024 * 1024,
           globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
           runtimeCaching: [
             {

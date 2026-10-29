@@ -3,6 +3,7 @@
   "appId": "1:108765565835:web:700f14507ab2687747558e",
   "apiKey": "AIzaSyA_8g2t3GukoT2lzbvIezI4NO6re1pC_v8",
   "authDomain": "distributed-env-czp7b.firebaseapp.com",
+  "firestoreDatabaseId": "ai-studio-learnora-189ac80e-2fad-4aed-9e25-ea8469c78882",
   "storageBucket": "distributed-env-czp7b.firebasestorage.app",
   "messagingSenderId": "108765565835",
   "measurementId": "",

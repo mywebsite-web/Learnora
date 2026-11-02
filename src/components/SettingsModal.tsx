@@ -60,13 +60,15 @@ import { ElevenLabsVoiceSelector } from './ElevenLabsVoiceSelector';
 import { PWAInstallButton } from './PWAInstallButton';
 import { ComplaintService } from '../services/complaintService';
 import { ProfileImageModal } from './ProfileImageModal';
+import { CreditPurchaseModal } from './CreditPurchaseModal';
 import { NotificationSettingsTab } from './NotificationSettingsTab';
+import { UserBadgesSection } from './UserBadgesSection';
 import { resizeAndCompressImage } from '../utils/imageUtils';
 
 interface SettingsModalProps {
   onClose: () => void;
   onRerunSetup?: () => void;
-  initialTab?: 'profile' | 'setup' | 'ai' | 'voice' | 'subscription' | 'certificates' | 'app' | 'privacy' | 'notifications' | 'complaints';
+  initialTab?: 'profile' | 'setup' | 'ai' | 'voice' | 'certificates' | 'app' | 'privacy' | 'notifications' | 'complaints';
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({ 
@@ -74,10 +76,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onRerunSetup,
   initialTab = 'profile'
 }) => {
-  const { user, profile, updateProfileData, sendPasswordReset, logout } = useAuth();
+  const { user, profile, credits, creditTransactions, updateProfileData, sendPasswordReset, logout } = useAuth();
   const { theme, setTheme } = useTheme();
   
-  const [activeTab, setActiveTab] = useState<'profile' | 'setup' | 'ai' | 'voice' | 'subscription' | 'certificates' | 'app' | 'privacy' | 'notifications' | 'complaints'>(initialTab);
+  const [activeTab, setActiveTab] = useState<'profile' | 'setup' | 'ai' | 'voice' | 'certificates' | 'app' | 'privacy' | 'notifications' | 'complaints'>(initialTab);
 
   useEffect(() => {
     if (initialTab) {
@@ -87,6 +89,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
   // Profile image modal & quick upload state
   const [showProfilePhotoModal, setShowProfilePhotoModal] = useState(false);
+  const [showCreditModal, setShowCreditModal] = useState(false);
+  const [creditModalTab, setCreditModalTab] = useState<'buy' | 'history'>('history');
   const quickFileInputRef = useRef<HTMLInputElement | null>(null);
   const [isQuickUploading, setIsQuickUploading] = useState(false);
 
@@ -297,7 +301,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   };
 
   interface NavItem {
-    id: 'profile' | 'setup' | 'ai' | 'voice' | 'notifications' | 'subscription' | 'certificates' | 'app' | 'privacy' | 'complaints';
+    id: 'profile' | 'setup' | 'ai' | 'voice' | 'notifications' | 'certificates' | 'app' | 'privacy' | 'complaints';
     label: string;
     desc: string;
     icon: React.ComponentType<{ className?: string }>;
@@ -311,7 +315,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     { id: 'voice', label: 'Voice & Audio', desc: '5 Curated Personas', icon: Volume2 },
     { id: 'notifications', label: 'Push Notifications', desc: 'Phone & Study Alerts', icon: Bell, badge: 'Web Push' },
     { id: 'complaints', label: 'Help & Complaints', desc: 'Report Issue to Admin', icon: MessageSquareWarning },
-    { id: 'subscription', label: 'Plan & Billing', desc: 'Academic Pro Tier', icon: CreditCard, badge: 'Coming Soon' },
     { id: 'certificates', label: 'Certificates', desc: 'Verified Credentials', icon: Award, badge: 'Coming Soon' },
     { id: 'app', label: 'App (PWA)', desc: 'Mobile & Desktop App', icon: Smartphone },
     { id: 'privacy', label: 'Privacy & Data', desc: 'Export & Security', icon: Shield }
@@ -601,6 +604,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   </div>
                 </div>
 
+                {/* Virtual Badges & Achievement Rewards Section */}
+                <div className="pt-2">
+                  <UserBadgesSection profile={profile} variant="card" />
+                </div>
+
                 {/* Account Credentials */}
                 <div className="pt-2">
                   <h5 className="font-bold text-xs text-slate-800 uppercase tracking-wider mb-2">Account Authentication</h5>
@@ -658,6 +666,74 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         ✓ Password reset link dispatched! Please check your inbox.
                       </p>
                     )}
+                  </div>
+                </div>
+
+                {/* AI Study Credits & Transaction History Summary */}
+                <div className="pt-2">
+                  <div className="flex items-center justify-between mb-2">
+                    <h5 className="font-bold text-xs text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                      <Zap className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
+                      <span>AI Study Credits &amp; Transaction History</span>
+                    </h5>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCreditModalTab('history');
+                          setShowCreditModal(true);
+                        }}
+                        className="text-[11px] font-bold px-2.5 py-1 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors cursor-pointer"
+                      >
+                        Full History ({creditTransactions.length})
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCreditModalTab('buy');
+                          setShowCreditModal(true);
+                        }}
+                        className="text-[11px] font-black px-2.5 py-1 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 transition-colors cursor-pointer"
+                      >
+                        🦋 Top Up
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3 text-xs">
+                    <div className="flex items-center justify-between pb-2.5 border-b border-slate-200/80">
+                      <span className="text-slate-600 font-semibold">Available AI Credit Balance:</span>
+                      <span className="text-sm font-black text-blue-700">
+                        {isAdminEmail(user?.email) ? 'Unlimited (Admin)' : `${credits} Credits`}
+                      </span>
+                    </div>
+
+                    <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                      {creditTransactions.slice(0, 5).map((tx) => {
+                        const isPos = tx.amount > 0;
+                        return (
+                          <div
+                            key={tx.id}
+                            className="p-2.5 rounded-xl bg-white border border-slate-200/80 flex items-center justify-between gap-2"
+                          >
+                            <div className="min-w-0 flex-1">
+                              <p className="font-bold text-slate-800 truncate">{tx.reason}</p>
+                              <div className="flex items-center gap-2 text-[10px] text-slate-400 mt-0.5">
+                                <span>{new Date(tx.timestamp).toLocaleDateString()} · {new Date(tx.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                {tx.reference && (
+                                  <span className="font-mono bg-slate-100 px-1.5 py-0.2 rounded text-slate-600 truncate max-w-[120px]">
+                                    {tx.reference}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            <span className={`font-black text-xs shrink-0 ${isPos ? 'text-emerald-600' : 'text-slate-700'}`}>
+                              {isPos ? `+${tx.amount}` : tx.amount} Credits
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
                 </div>
 
@@ -1020,162 +1096,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   <p className="text-xs text-slate-500 mt-0.5">Select high-clarity neural voices for audio recaps and tutoring.</p>
                 </div>
                 <ElevenLabsVoiceSelector />
-              </div>
-            )}
-
-            {/* ------------------------------------------------------------ */}
-            {/* TAB: SUBSCRIPTION & BILLING                                  */}
-            {/* ------------------------------------------------------------ */}
-            {activeTab === 'subscription' && (
-              <div className="space-y-5 animate-fade-in">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h4 className="text-lg font-black text-slate-900 font-serif tracking-tight">Academic Pro Subscription &amp; Billing</h4>
-                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-100 text-amber-800 border border-amber-200/80">
-                      Pricing Coming Soon
-                    </span>
-                  </div>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    Official billing and regional payment options are coming soon. All registered learners currently enjoy complimentary full access.
-                  </p>
-                </div>
-
-                {/* Active Complimentary Tier Hero Banner */}
-                <div className="p-5 rounded-3xl bg-gradient-to-r from-blue-600 via-blue-700 to-indigo-700 text-white shadow-lg shadow-blue-600/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <span className="text-[10px] font-black uppercase tracking-wider text-blue-200 bg-white/20 px-2.5 py-0.5 rounded-full inline-block">
-                        Active Tier
-                      </span>
-                      <span className="text-[10px] font-black uppercase tracking-wider text-emerald-300 bg-emerald-500/20 border border-emerald-400/30 px-2 py-0.5 rounded-full inline-block">
-                        Full Access Enabled
-                      </span>
-                    </div>
-                    <h5 className="text-2xl font-black font-serif">Academic Pro (Full Access)</h5>
-                    <p className="text-xs text-blue-100/90 font-medium max-w-lg">
-                      Unlimited study sets, AI quizzes, Socratic audio lessons, essay grading, and full exam simulations.
-                    </p>
-                  </div>
-                  <div className="shrink-0">
-                    <span className="px-3 py-1.5 rounded-full bg-emerald-400 text-slate-950 text-xs font-black inline-block shadow-xs">
-                      Active
-                    </span>
-                  </div>
-                </div>
-
-                {/* Billing Launch Notice */}
-                <div className="p-4 rounded-2xl border border-amber-200/80 bg-gradient-to-r from-amber-50/80 to-orange-50/50 flex items-start gap-3 text-xs">
-                  <div className="w-8 h-8 rounded-xl bg-amber-100 border border-amber-200 text-amber-800 flex items-center justify-center shrink-0 mt-0.5 font-bold">
-                    <Clock className="w-4 h-4 text-amber-600" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <h6 className="font-extrabold text-amber-950 text-xs">Pricing &amp; Billing Launching Soon</h6>
-                    <p className="text-[11px] text-amber-800 mt-0.5 leading-relaxed">
-                      We are finalizing regional pricing, student discounts, and institutional payment methods. Plan prices will be unveiled here before billing is activated. In the meantime, enjoy complete, unrestricted Academic Pro features!
-                    </p>
-                  </div>
-                </div>
-
-                {/* Quota & Generation Limits */}
-                <div className="p-4 rounded-2xl border border-slate-200 bg-slate-50 space-y-2 text-xs">
-                  <div className="flex justify-between text-slate-700 font-semibold">
-                    <span>Monthly AI Tutor Generations</span>
-                    <span className="text-blue-700 font-bold">Unlimited Plan (Complimentary)</span>
-                  </div>
-                  <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden">
-                    <div className="bg-gradient-to-r from-blue-600 to-indigo-600 h-full w-full rounded-full" />
-                  </div>
-                  <div className="flex items-center justify-between text-[11px] text-slate-400 pt-0.5">
-                    <span>No token restrictions during preview</span>
-                    <span className="font-semibold text-emerald-600">100% Unlocked</span>
-                  </div>
-                </div>
-
-                {/* Renewal Durations (All with Coming Soon & No amounts displayed) */}
-                <div className="pt-2">
-                  <div className="flex items-center justify-between mb-2">
-                    <h5 className="font-bold text-xs text-slate-900 uppercase tracking-wider">
-                      Upcoming Subscription Plans
-                    </h5>
-                    <span className="text-[11px] text-slate-400 font-medium">Pricing details coming soon</span>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 text-xs">
-                    {[
-                      { dur: '1 Month', desc: 'Flexible monthly billing for exams & single courses', tag: 'Standard' },
-                      { dur: '3 Months', desc: 'Full academic term access with uninterrupted tutoring', tag: 'Term Pass' },
-                      { dur: '6 Months', desc: 'Semester-long mastery with priority ElevenLabs voices', tag: 'Semester Pass', popular: true },
-                      { dur: '1 Year', desc: 'Annual pass across all degrees, subjects & materials', tag: 'Annual Pass' }
-                    ].map((plan) => (
-                      <div 
-                        key={plan.dur} 
-                        className={`p-3.5 rounded-2xl border flex flex-col justify-between transition-all ${
-                          plan.popular 
-                            ? 'border-blue-500 bg-blue-50/50 ring-2 ring-blue-500/20 shadow-xs' 
-                            : 'border-slate-200 bg-slate-50/70 hover:bg-slate-50'
-                        }`}
-                      >
-                        <div className="space-y-1">
-                          <div className="flex items-center justify-between gap-1">
-                            <span className="font-black text-slate-900 text-xs">{plan.dur}</span>
-                            {plan.popular && (
-                              <span className="text-[9px] font-black uppercase text-blue-700 bg-blue-100 px-1.5 py-0.5 rounded-md">
-                                Best Value
-                              </span>
-                            )}
-                          </div>
-                          <p className="text-[10px] text-slate-500 leading-tight">
-                            {plan.desc}
-                          </p>
-                        </div>
-
-                        <div className="pt-3 mt-3 border-t border-slate-200/80 flex items-center justify-between">
-                          <span className="text-[10px] font-medium text-slate-400">Price:</span>
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-100 text-amber-800 border border-amber-200/80">
-                            Coming Soon
-                          </span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Features & Tier Breakdown Table */}
-                <div className="pt-2">
-                  <h5 className="font-bold text-xs text-slate-900 uppercase tracking-wider mb-2">
-                    Plan Features &amp; Availability
-                  </h5>
-                  <div className="rounded-2xl border border-slate-200 overflow-hidden text-xs">
-                    <div className="grid grid-cols-3 bg-slate-100/80 p-2.5 font-bold text-slate-700 border-b border-slate-200 text-[11px]">
-                      <div>Capability</div>
-                      <div className="text-center">Free Starter</div>
-                      <div className="text-center text-blue-700">Academic Pro</div>
-                    </div>
-                    <div className="divide-y divide-slate-100 bg-white">
-                      {[
-                        { feature: 'Study Sets & Flashcards', free: 'Standard', pro: 'Unlimited' },
-                        { feature: 'Nora Socratic AI Tutor', free: 'Standard', pro: '24/7 Adaptive' },
-                        { feature: 'Neural Voice Narration', free: 'Web Speech', pro: 'All ElevenLabs Voices' },
-                        { feature: 'Essay Grader & AI Rubrics', free: 'Standard', pro: 'Unlimited Detailed' },
-                        { feature: 'Billing Price', free: 'Free', pro: 'Coming Soon' }
-                      ].map((row, rIdx) => (
-                        <div key={rIdx} className="grid grid-cols-3 p-2.5 items-center text-[11px]">
-                          <span className="font-medium text-slate-800">{row.feature}</span>
-                          <span className="text-center text-slate-500">{row.free}</span>
-                          <div className="text-center font-bold">
-                            {row.pro === 'Coming Soon' ? (
-                              <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-amber-100 text-amber-800 border border-amber-200/80 inline-block">
-                                Coming Soon
-                              </span>
-                            ) : (
-                              <span className="text-blue-700">{row.pro}</span>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
               </div>
             )}
 
@@ -1757,6 +1677,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           setSavedSuccess(true);
           setTimeout(() => setSavedSuccess(false), 2500);
         }}
+      />
+
+      {/* Credit Purchase & Transaction History Modal */}
+      <CreditPurchaseModal
+        isOpen={showCreditModal}
+        initialTab={creditModalTab}
+        onClose={() => setShowCreditModal(false)}
       />
     </div>
   );

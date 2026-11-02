@@ -11,11 +11,14 @@ import {
   FileCode,
   Image as ImageIcon,
   Clock,
-  ArrowRight
+  ArrowRight,
+  Zap
 } from 'lucide-react';
 import { AIService } from '../services/aiService';
 import { DBService } from '../services/dbService';
-import { StudySet, StudyMaterial, ProcessingStatus } from '../types';
+import { StudySet, StudyMaterial, ProcessingStatus, isAdminEmail } from '../types';
+import { useAuth } from '../context/AuthContext';
+import { CreditPurchaseModal } from './CreditPurchaseModal';
 
 interface MaterialUploadModalProps {
   userId: string;
@@ -54,6 +57,12 @@ export const MaterialUploadModal: React.FC<MaterialUploadModalProps> = ({
   const [status, setStatus] = useState<ProcessingStatus>('idle');
   const [statusMessage, setStatusMessage] = useState('');
   const [error, setError] = useState<string | null>(null);
+
+  // Credit limits & purchase modal
+  const { profile, credits, deductCredits } = useAuth();
+  const [showCreditModal, setShowCreditModal] = useState(false);
+  const REQUIRED_CREDITS = 2;
+  const isUserAdmin = profile?.role === 'admin' || isAdminEmail(profile?.email);
 
   // Handle file selection and read text
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -127,6 +136,13 @@ export const MaterialUploadModal: React.FC<MaterialUploadModalProps> = ({
     const effectiveTitle = title.trim() || 'Untitled Study Set';
     const effectiveSubject = subject.trim() || 'General';
 
+    // Credit validation before upload
+    if (!isUserAdmin && credits < REQUIRED_CREDITS) {
+      setError(`Your balance is ${credits} credit${credits === 1 ? '' : 's'}. You need ${REQUIRED_CREDITS} AI credits to upload and generate this study set. Please top up your credits.`);
+      setShowCreditModal(true);
+      return;
+    }
+
     setStatus('uploading');
     setStatusMessage('Uploading and extracting educational materials...');
 
@@ -155,6 +171,17 @@ export const MaterialUploadModal: React.FC<MaterialUploadModalProps> = ({
 
       if (!extractedContent.trim()) {
         throw new Error('Please provide text, upload a file, or enter a topic.');
+      }
+
+      // Strictly verify and subtract credits per usage BEFORE creating resources
+      if (!isUserAdmin) {
+        const deductRes = await deductCredits(REQUIRED_CREDITS, `Generate AI Study Set: ${effectiveTitle}`);
+        if (!deductRes.success) {
+          setError(deductRes.error || `Insufficient credits. You need ${REQUIRED_CREDITS} credits.`);
+          setShowCreditModal(true);
+          setStatus('idle');
+          return;
+        }
       }
 
       const materialId = 'mat_' + Date.now();
@@ -186,11 +213,11 @@ export const MaterialUploadModal: React.FC<MaterialUploadModalProps> = ({
       setStatus('generating');
       setStatusMessage('Nora is generating structured notes, flashcards & quiz...');
 
-      // 1. Generate Structured Notes
+      // 1. Generate Comprehensive Structured Notes
       const notesData = await AIService.generateNotes({
         materialTitle: effectiveTitle,
         materialContent: extractedContent,
-        noteType: 'standard'
+        noteType: 'comprehensive'
       });
 
       const noteDoc = {
@@ -198,7 +225,7 @@ export const MaterialUploadModal: React.FC<MaterialUploadModalProps> = ({
         studySetId: setId,
         userId,
         title: `${effectiveTitle} — Study Notes`,
-        type: 'standard' as const,
+        type: 'comprehensive' as const,
         sections: notesData.sections || [],
         summary: notesData.summary || '',
         sourceReferences: notesData.sourceReferences || [],
@@ -314,6 +341,28 @@ export const MaterialUploadModal: React.FC<MaterialUploadModalProps> = ({
 
         {/* Content Body */}
         <form onSubmit={handleSubmit} className="p-6 overflow-y-auto flex-1 space-y-4">
+          {/* Zero Credit Lockout Banner */}
+          {!isUserAdmin && credits <= 0 && (
+            <div className="p-4 bg-amber-500/10 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-700/80 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-amber-900 dark:text-amber-200 animate-in fade-in">
+              <div className="flex items-start sm:items-center gap-2.5">
+                <Zap className="w-5 h-5 text-amber-600 dark:text-amber-400 fill-amber-500 shrink-0 mt-0.5 sm:mt-0 animate-pulse" />
+                <div>
+                  <h4 className="font-extrabold text-xs sm:text-sm">Upload Locked (0 Credits Remaining)</h4>
+                  <p className="text-xs text-amber-800 dark:text-amber-300 mt-0.5">
+                    Generating notes, flashcards, and diagnostic quizzes requires {REQUIRED_CREDITS} credits. Top up your balance to upload materials.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowCreditModal(true)}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-extrabold text-xs rounded-xl shadow-xs transition-all shrink-0 cursor-pointer text-center"
+              >
+                Top Up Credits ⚡
+              </button>
+            </div>
+          )}
+
           {error && (
             <div className="p-3 bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800 rounded-xl text-rose-700 dark:text-rose-300 text-xs flex items-start gap-2">
               <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
@@ -523,6 +572,26 @@ export const MaterialUploadModal: React.FC<MaterialUploadModalProps> = ({
             </div>
           )}
 
+          {/* AI Credits Cost Banner */}
+          <div className="flex items-center justify-between text-xs font-semibold px-3 py-2 bg-blue-50/80 dark:bg-slate-800/80 rounded-xl border border-blue-100 dark:border-slate-700">
+            <span className="flex items-center gap-1.5 text-slate-700 dark:text-slate-300">
+              <Zap className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
+              <span>Generation Cost: <strong className="text-blue-700 dark:text-blue-400">2 Credits</strong></span>
+            </span>
+            <button
+              type="button"
+              onClick={() => setShowCreditModal(true)}
+              className="text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1.5 font-bold cursor-pointer"
+            >
+              <span>{isUserAdmin ? 'Unlimited (Admin)' : `${credits} available`}</span>
+              {!isUserAdmin && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-600 text-white font-black hover:bg-blue-700">
+                  Top up
+                </span>
+              )}
+            </button>
+          </div>
+
           {/* Submit Action */}
           <div className="pt-2 flex justify-end gap-3 border-t border-slate-100 dark:border-slate-800">
             <button
@@ -534,11 +603,17 @@ export const MaterialUploadModal: React.FC<MaterialUploadModalProps> = ({
               Cancel
             </button>
             <button
-              type="submit"
+              type={(!isUserAdmin && credits < REQUIRED_CREDITS) ? 'button' : 'submit'}
+              onClick={(!isUserAdmin && credits < REQUIRED_CREDITS) ? (e) => {
+                e.preventDefault();
+                setShowCreditModal(true);
+              } : undefined}
               disabled={(status !== 'idle' && status !== 'error') || activeTab === 'youtube'}
-              className={`px-6 py-2.5 rounded-xl text-white font-semibold text-xs shadow-md transition-all flex items-center gap-2 ${
+              className={`px-6 py-2.5 rounded-xl text-white font-semibold text-xs shadow-md transition-all flex items-center gap-2 cursor-pointer ${
                 activeTab === 'youtube'
                   ? 'bg-amber-600/80 cursor-not-allowed opacity-70'
+                  : (!isUserAdmin && credits < REQUIRED_CREDITS)
+                  ? 'bg-blue-600 hover:bg-blue-700 active:scale-98 shadow-blue-600/20'
                   : 'bg-indigo-600 hover:bg-indigo-700 active:scale-98 shadow-indigo-600/20 disabled:opacity-50'
               }`}
             >
@@ -547,16 +622,29 @@ export const MaterialUploadModal: React.FC<MaterialUploadModalProps> = ({
                   <Clock className="w-4 h-4" />
                   <span>YouTube Feature Coming Soon</span>
                 </>
+              ) : (!isUserAdmin && credits < REQUIRED_CREDITS) ? (
+                <>
+                  <Zap className="w-4 h-4 fill-white text-white" />
+                  <span>{credits <= 0 ? 'Top Up to Upload (0 Credits)' : `Need ${REQUIRED_CREDITS} Credits (Have ${credits})`}</span>
+                </>
               ) : (
                 <>
                   <Sparkles className="w-4 h-4" />
-                  <span>Generate Study Set</span>
+                  <span>Generate Study Set (2 Credits)</span>
                 </>
               )}
             </button>
           </div>
         </form>
       </div>
+
+      {/* Credit Purchase Modal */}
+      <CreditPurchaseModal
+        isOpen={showCreditModal}
+        onClose={() => setShowCreditModal(false)}
+        requiredCredits={REQUIRED_CREDITS}
+        featureName="Study Material Upload"
+      />
     </div>
   );
 };

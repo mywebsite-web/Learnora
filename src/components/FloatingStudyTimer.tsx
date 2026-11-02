@@ -17,6 +17,7 @@ import {
   Minimize2
 } from 'lucide-react';
 import { NotificationService } from '../services/notificationService';
+import { StudyTimerService, StudyTimerState } from '../services/studyTimerService';
 
 export type TimerMode = 'pomodoro' | 'deep' | 'shortBreak' | 'longBreak' | 'stopwatch';
 
@@ -74,7 +75,6 @@ const TIMER_CONFIGS: Record<TimerMode, TimerConfig> = {
 };
 
 const STORAGE_KEY_POS = 'learnora_floating_timer_pos';
-const STORAGE_KEY_STATE = 'learnora_floating_timer_state';
 
 export const FloatingStudyTimer: React.FC<FloatingStudyTimerProps> = ({
   isVisible,
@@ -82,14 +82,33 @@ export const FloatingStudyTimer: React.FC<FloatingStudyTimerProps> = ({
   activeSubject = 'General Studies',
   onLogStudyTime
 }) => {
-  // Timer States
-  const [mode, setMode] = useState<TimerMode>('pomodoro');
-  const [timeLeft, setTimeLeft] = useState<number>(TIMER_CONFIGS.pomodoro.defaultSeconds);
-  const [isRunning, setIsRunning] = useState<boolean>(false);
+  // Global Synced Study Timer State
+  const [timerState, setTimerState] = useState<StudyTimerState>(() => StudyTimerService.getState());
   const [isExpanded, setIsExpanded] = useState<boolean>(false);
   const [isMinimized, setIsMinimized] = useState<boolean>(false);
-  const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
-  const [completedSessions, setCompletedSessions] = useState<number>(0);
+
+  useEffect(() => {
+    const unsub = StudyTimerService.subscribe((s) => {
+      setTimerState(s);
+    });
+    return () => unsub();
+  }, []);
+
+  useEffect(() => {
+    if (activeSubject) {
+      StudyTimerService.setActiveSubject(activeSubject);
+    }
+  }, [activeSubject]);
+
+  useEffect(() => {
+    StudyTimerService.registerStudyTimeLogger(onLogStudyTime);
+  }, [onLogStudyTime]);
+
+  const mode = timerState.mode;
+  const timeLeft = timerState.timeLeft;
+  const isRunning = timerState.isRunning;
+  const soundEnabled = timerState.soundEnabled;
+  const completedSessions = timerState.completedSessions;
 
   // Dragging States
   const [position, setPosition] = useState<{ x: number; y: number }>(() => {
@@ -118,41 +137,6 @@ export const FloatingStudyTimer: React.FC<FloatingStudyTimerProps> = ({
   });
 
   const widgetRef = useRef<HTMLDivElement>(null);
-  const lastTickRef = useRef<number>(Date.now());
-
-  // Load persisted state on mount
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY_STATE);
-      if (raw) {
-        const saved = JSON.parse(raw);
-        if (saved.mode && TIMER_CONFIGS[saved.mode as TimerMode]) {
-          setMode(saved.mode);
-        }
-        if (typeof saved.timeLeft === 'number') {
-          setTimeLeft(saved.timeLeft);
-        }
-        if (typeof saved.completedSessions === 'number') {
-          setCompletedSessions(saved.completedSessions);
-        }
-        if (typeof saved.soundEnabled === 'boolean') {
-          setSoundEnabled(saved.soundEnabled);
-        }
-      }
-    } catch {}
-  }, []);
-
-  // Save state on change
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY_STATE, JSON.stringify({
-        mode,
-        timeLeft,
-        completedSessions,
-        soundEnabled
-      }));
-    } catch {}
-  }, [mode, timeLeft, completedSessions, soundEnabled]);
 
   // Keep widget clamped inside screen boundaries on window resize
   const clampPosition = useCallback((x: number, y: number) => {
@@ -174,119 +158,6 @@ export const FloatingStudyTimer: React.FC<FloatingStudyTimerProps> = ({
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, [clampPosition]);
-
-  // When timer finishes
-  const handleTimerFinished = useCallback(() => {
-    setIsRunning(false);
-
-    // 1. Play Audio Chime
-    if (soundEnabled) {
-      try {
-        NotificationService.playNotificationChime();
-      } catch (e) {
-        console.warn('Audio chime notice:', e);
-      }
-    }
-
-    // 2. Mobile haptic feedback
-    if (typeof navigator !== 'undefined' && navigator.vibrate) {
-      try {
-        navigator.vibrate([200, 100, 200, 100, 300]);
-      } catch {}
-    }
-
-    const config = TIMER_CONFIGS[mode];
-    const minutesCompleted = Math.round(config.defaultSeconds / 60);
-
-    if (!config.isBreak) {
-      // Focus session completed!
-      setCompletedSessions(prev => prev + 1);
-
-      // Auto log study time to Weekly Run and XP
-      if (minutesCompleted > 0) {
-        onLogStudyTime(minutesCompleted, activeSubject);
-      }
-
-      // Drop live in-app notification
-      window.dispatchEvent(new CustomEvent('learnora_live_notification_drop', {
-        detail: {
-          id: `timer_done_${Date.now()}`,
-          userId: 'all',
-          title: '🎉 Focus Sprint Completed!',
-          message: `Awesome dedication! You logged ${minutesCompleted} focus minutes on ${activeSubject}. Take a 5-minute breather.`,
-          type: 'study-reminder',
-          read: false,
-          createdAt: Date.now(),
-          priority: 'high',
-          actionUrl: 'weekly-run',
-          actionLabel: 'View Weekly Run',
-          sender: 'Nora Focus Timer'
-        }
-      }));
-
-      // Auto set up short break
-      setMode('shortBreak');
-      setTimeLeft(TIMER_CONFIGS.shortBreak.defaultSeconds);
-    } else {
-      // Break completed
-      window.dispatchEvent(new CustomEvent('learnora_live_notification_drop', {
-        detail: {
-          id: `break_done_${Date.now()}`,
-          userId: 'all',
-          title: '🔔 Break Finished!',
-          message: 'Your 5-minute pause is done. Refreshed and ready for your next active recall study sprint?',
-          type: 'announcement',
-          read: false,
-          createdAt: Date.now(),
-          priority: 'high',
-          actionUrl: 'flashcards',
-          actionLabel: 'Resume Study',
-          sender: 'Nora Focus Timer'
-        }
-      }));
-
-      // Switch back to Pomodoro
-      setMode('pomodoro');
-      setTimeLeft(TIMER_CONFIGS.pomodoro.defaultSeconds);
-    }
-  }, [activeSubject, mode, onLogStudyTime, soundEnabled]);
-
-  // Handle timer countdown / countup tick
-  useEffect(() => {
-    let interval: any = null;
-
-    if (isRunning) {
-      lastTickRef.current = Date.now();
-      interval = setInterval(() => {
-        const now = Date.now();
-        // Use Math.floor to ensure accurate 1-second ticks
-        const delta = Math.floor((now - lastTickRef.current) / 1000);
-        
-        if (delta >= 1) {
-          lastTickRef.current += delta * 1000;
-
-          if (mode === 'stopwatch') {
-            setTimeLeft(prev => prev + delta);
-          } else {
-            setTimeLeft(prev => {
-              if (prev <= delta) {
-                // Timer finished!
-                setTimeout(() => handleTimerFinished(), 0);
-                return 0;
-              }
-              return prev - delta;
-            });
-          }
-        }
-      }, 250);
-    }
-
-    return () => {
-      if (interval) {
-        clearInterval(interval);
-      }
-    };
-  }, [isRunning, mode, handleTimerFinished]);
 
   // Dragging event handlers (Pointer events work on both Mouse and Touch)
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -355,7 +226,7 @@ export const FloatingStudyTimer: React.FC<FloatingStudyTimerProps> = ({
       e.stopPropagation();
       e.preventDefault();
     }
-    setIsRunning(prev => !prev);
+    StudyTimerService.toggle();
   };
 
   const handleReset = (e?: React.SyntheticEvent) => {
@@ -363,14 +234,11 @@ export const FloatingStudyTimer: React.FC<FloatingStudyTimerProps> = ({
       e.stopPropagation();
       e.preventDefault();
     }
-    setIsRunning(false);
-    setTimeLeft(TIMER_CONFIGS[mode].defaultSeconds);
+    StudyTimerService.reset();
   };
 
   const handleSelectMode = (newMode: TimerMode) => {
-    setMode(newMode);
-    setIsRunning(false);
-    setTimeLeft(TIMER_CONFIGS[newMode].defaultSeconds);
+    StudyTimerService.setMode(newMode);
     setIsExpanded(false);
   };
 
@@ -379,7 +247,7 @@ export const FloatingStudyTimer: React.FC<FloatingStudyTimerProps> = ({
       e.stopPropagation();
       e.preventDefault();
     }
-    setTimeLeft(prev => Math.max(60, prev + deltaMin * 60));
+    StudyTimerService.adjustMinutes(deltaMin);
   };
 
   // Format time mm:ss or hh:mm:ss
@@ -716,7 +584,7 @@ export const FloatingStudyTimer: React.FC<FloatingStudyTimerProps> = ({
               type="button"
               data-no-drag="true"
               onPointerDown={(e) => e.stopPropagation()}
-              onClick={() => setSoundEnabled(prev => !prev)}
+              onClick={() => StudyTimerService.setSoundEnabled(!soundEnabled)}
               className="flex items-center gap-1.5 text-slate-300 hover:text-white transition-colors"
             >
               {soundEnabled ? (

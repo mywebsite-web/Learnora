@@ -34,6 +34,8 @@ import {
   GraduationCap, 
   Star, 
   Play, 
+  Pause,
+  RotateCcw,
   Home, 
   MessageSquare, 
   Award, 
@@ -50,14 +52,17 @@ import {
   Moon,
   Wrench,
   MessageSquareWarning,
-  Users
+  Users,
+  Zap
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { DBService } from '../services/dbService';
+import { AIService } from '../services/aiService';
 import { StudySet, isAdminEmail, ADMIN_EMAIL, MaintenanceModeConfig } from '../types';
 import { MaintenanceService } from '../services/maintenanceService';
 import { MaterialUploadModal } from './MaterialUploadModal';
+import { CreditPurchaseModal } from './CreditPurchaseModal';
 import { ComplaintModal } from './ComplaintModal';
 import { StudySetDetailView } from './StudySetDetailView';
 import { NoraTutorView } from './NoraTutorView';
@@ -79,6 +84,7 @@ import { WeeklyRunSummaryCard } from './WeeklyRunSummaryCard';
 import { WeeklyRunModal } from './WeeklyRunModal';
 import { WeeklyRunSprintList } from './WeeklyRunSprintList';
 import { ProfileImageModal } from './ProfileImageModal';
+import { UserBadgesSection } from './UserBadgesSection';
 import { ReviewLessonItem, NotificationItem } from '../types';
 import { ReviewQueueService } from '../services/reviewQueueService';
 import { ReviewQueueCard } from './ReviewQueueCard';
@@ -93,6 +99,7 @@ import { ConfettiService } from '../services/confettiService';
 import { CertificatesComingSoonView } from './CertificatesComingSoonView';
 import { NotificationsView } from './NotificationsView';
 import { FloatingStudyTimer } from './FloatingStudyTimer';
+import { StudyTimerService, StudyTimerState, TIMER_CONFIGS, TimerMode } from '../services/studyTimerService';
 import { CommunityChatView } from './CommunityChatView';
 import { CommunityChatService } from '../services/communityChatService';
 import { useSEO } from '../hooks/useSEO';
@@ -120,8 +127,11 @@ interface MainDashboardProps {
 }
 
 export const MainDashboard: React.FC<MainDashboardProps> = ({ onRerunSetup }) => {
-  const { user, profile, logout, updateProfileData } = useAuth();
+  const { user, profile, logout, updateProfileData, credits } = useAuth();
   const { theme, isDark, toggleTheme, setTheme } = useTheme();
+  const [showCreditPurchaseModal, setShowCreditPurchaseModal] = useState(false);
+  const [creditModalInitialTab, setCreditModalInitialTab] = useState<'buy' | 'history'>('buy');
+  const isUserAdmin = profile?.role === 'admin' || isAdminEmail(profile?.email);
   const [activeView, setActiveView] = useState<ActiveView>(() => {
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
@@ -228,7 +238,7 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({ onRerunSetup }) =>
   const [showAudioModal, setShowAudioModal] = useState(false);
   const [showExplainerModal, setShowExplainerModal] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
-  const [settingsInitialTab, setSettingsInitialTab] = useState<'profile' | 'setup' | 'ai' | 'voice' | 'subscription' | 'certificates' | 'app' | 'privacy' | 'notifications'>('profile');
+  const [settingsInitialTab, setSettingsInitialTab] = useState<'profile' | 'setup' | 'ai' | 'voice' | 'certificates' | 'app' | 'privacy' | 'notifications'>('profile');
   const [showProfileDropdown, setShowProfileDropdown] = useState(false);
   const profileDropdownRef = useRef<HTMLDivElement | null>(null);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
@@ -252,7 +262,7 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({ onRerunSetup }) =>
   }, [showProfileDropdown]);
 
   // Helper to open specific settings tab smoothly
-  const openSettings = (tab: 'profile' | 'setup' | 'ai' | 'voice' | 'subscription' | 'app' | 'privacy' | 'notifications' = 'profile') => {
+  const openSettings = (tab: 'profile' | 'setup' | 'ai' | 'voice' | 'app' | 'privacy' | 'notifications' = 'profile') => {
     setSettingsInitialTab(tab);
     setShowSettingsModal(true);
     setShowProfileDropdown(false);
@@ -299,25 +309,45 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({ onRerunSetup }) =>
   const [onlineCount, setOnlineCount] = useState<number>(1);
   const notificationDropdownRef = useRef<HTMLDivElement | null>(null);
 
-  // Floating Study Focus Timer State (Visible by default and repositionable anywhere)
-  const [showFloatingTimer, setShowFloatingTimer] = useState<boolean>(() => {
-    try {
-      const saved = localStorage.getItem('learnora_floating_timer_visible');
-      return saved !== null ? JSON.parse(saved) : true;
-    } catch {
-      return true;
+  // Synced Study Focus Timer State (Live synced across top nav, mobile drawer & floating widget)
+  const [timerState, setTimerState] = useState<StudyTimerState>(() => StudyTimerService.getState());
+  const [showTopNavTimerMenu, setShowTopNavTimerMenu] = useState(false);
+  const topNavTimerRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const unsub = StudyTimerService.subscribe((s) => {
+      setTimerState(s);
+    });
+    return () => unsub();
+  }, []);
+
+  useEffect(() => {
+    if (selectedSet?.subject || selectedSet?.title) {
+      StudyTimerService.setActiveSubject(selectedSet.subject || selectedSet.title);
     }
-  });
+  }, [selectedSet]);
 
   const handleToggleFloatingTimer = () => {
-    setShowFloatingTimer(prev => {
-      const next = !prev;
-      try {
-        localStorage.setItem('learnora_floating_timer_visible', JSON.stringify(next));
-      } catch {}
-      return next;
-    });
+    StudyTimerService.toggleWidgetVisible();
   };
+
+  // Close top nav timer popover when clicking/tapping outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent | TouchEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (topNavTimerRef.current && !topNavTimerRef.current.contains(target as Node)) {
+        setShowTopNavTimerMenu(false);
+      }
+    };
+    if (showTopNavTimerMenu) {
+      document.addEventListener('mousedown', handleClickOutside);
+      document.addEventListener('touchstart', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+    };
+  }, [showTopNavTimerMenu]);
 
   // Maintenance mode state for admin indicator
   const [maintenanceConfig, setMaintenanceConfig] = useState<MaintenanceModeConfig>(() => MaintenanceService.getLocalConfig());
@@ -716,7 +746,7 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({ onRerunSetup }) =>
 
       {/* Persistent Floating Draggable Study Timer (Accessible across all views) */}
       <FloatingStudyTimer
-        isVisible={showFloatingTimer}
+        isVisible={timerState.isWidgetVisible}
         onToggleVisibility={handleToggleFloatingTimer}
         activeSubject={selectedSet?.subject || selectedSet?.title || 'General Studies'}
         onLogStudyTime={async (minutes, subject) => {
@@ -745,46 +775,65 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({ onRerunSetup }) =>
       {/* 1. TOP GLOBAL NAVIGATION HEADER (MOBILE OPTIMIZED)             */}
       {/* ============================================================== */}
       <header className={`sticky top-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200/80 dark:border-slate-800 shadow-2xs ${activeView === 'tutor' || activeView === 'study-set-detail' || activeView === 'notifications' ? 'hidden' : ''}`}>
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 sm:h-18 flex items-center justify-between gap-3">
+        <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 h-16 sm:h-18 flex items-center justify-between gap-1.5 sm:gap-3">
           
-          {/* Brand Logo & Title on Desktop / Mobile User Greeting */}
-          <div className="flex items-center gap-2.5">
+          {/* Brand Logo & Title on Desktop / Mobile Nav Menu + User Greeting */}
+          <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
+            {/* Mobile Navigation Menu Hamburger Button (Leftmost on mobile for instant thumb reach) */}
+            <button
+              type="button"
+              onClick={() => setShowMobileMenu(true)}
+              className="flex md:hidden w-9 h-9 rounded-2xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 active:scale-95 text-slate-800 dark:text-slate-100 items-center justify-center transition-all relative shrink-0 border border-slate-200 dark:border-slate-700 shadow-2xs"
+              title="Navigation Menu, Study Tools & Timer"
+              aria-label="Open navigation menu"
+            >
+              <Menu className="w-4 h-4 text-slate-700 dark:text-slate-200" />
+              {unreadNotifCount > 0 ? (
+                <span className="absolute -top-1 -right-1 min-w-[14px] h-[14px] px-0.5 rounded-full bg-blue-600 text-white text-[8px] font-black flex items-center justify-center ring-2 ring-white dark:ring-slate-900 animate-pulse">
+                  {unreadNotifCount > 9 ? '9+' : unreadNotifCount}
+                </span>
+              ) : isOwnerAdmin ? (
+                <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-rose-600 ring-2 ring-white dark:ring-slate-900" />
+              ) : null}
+            </button>
+
+            {/* Brand Logo */}
             <div 
               onClick={() => setActiveView('home')}
-              className="w-10 h-10 rounded-2xl overflow-hidden shadow-md shadow-emerald-950/20 cursor-pointer active:scale-95 transition-transform shrink-0 border border-emerald-800/30"
+              className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl overflow-hidden shadow-md shadow-emerald-950/20 cursor-pointer active:scale-95 transition-transform shrink-0 border border-emerald-800/30"
               title="Learnora Home"
             >
               <img src="/pwa-192x192.png" alt="Learnora Logo" className="w-full h-full object-cover" />
             </div>
             
-            <div className="min-w-0">
-              {/* Mobile Heading: Hello, Alex! */}
-              <div className="flex items-center gap-1.5 min-w-0">
-                <span className="text-sm sm:text-lg font-black text-slate-900 dark:text-slate-100 tracking-tight leading-none truncate max-w-[130px] sm:max-w-none">
+            <div className="shrink-0">
+              {/* Heading: Hello, Abdulsalam! (Never cut in half or covered) */}
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs sm:text-base font-black text-slate-900 dark:text-slate-100 tracking-tight leading-none whitespace-nowrap">
                   Hello, {userName}!
                 </span>
-                <span className="w-2 h-2 rounded-full bg-emerald-500 ring-2 ring-white dark:ring-slate-900 shrink-0 sm:hidden" />
+                <span className="w-2 h-2 rounded-full bg-emerald-500 ring-2 ring-white dark:ring-slate-900 shrink-0 hidden sm:block" />
               </div>
-              <p className="text-[10px] sm:text-[11px] text-slate-400 dark:text-slate-400 font-medium leading-tight mt-0.5 hidden xs:block">
+              <p className="text-[10px] sm:text-[11px] text-slate-400 dark:text-slate-400 font-medium leading-tight mt-0.5 hidden xl:block whitespace-nowrap">
                 Turn what you have into what you know
               </p>
             </div>
           </div>
 
-          {/* Centered Search Bar on Tablet/Desktop */}
-          <div className="hidden md:flex items-center flex-1 max-w-md mx-4">
+          {/* Desktop Search Bar positioned with clear spacing away from the greeting */}
+          <div className="hidden md:flex items-center justify-end flex-1 max-w-xs lg:max-w-sm xl:max-w-md ml-auto mr-2 lg:mr-3 min-w-[160px]">
             <div className="relative w-full">
-              <Search className="w-4 h-4 text-slate-400 absolute left-4 top-3" />
+              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-2.5 pointer-events-none" />
               <input 
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="What are you looking for..."
-                className="w-full pl-11 pr-11 py-2 bg-slate-100/80 dark:bg-slate-800/90 hover:bg-slate-100 dark:hover:bg-slate-800 focus:bg-white dark:focus:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl text-xs sm:text-sm text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all font-medium"
+                placeholder="Search study sets..."
+                className="w-full pl-9 pr-9 py-1.5 bg-slate-100/80 dark:bg-slate-800/90 hover:bg-slate-100 dark:hover:bg-slate-800 focus:bg-white dark:focus:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl text-xs sm:text-sm text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all font-medium"
               />
               <button 
                 onClick={() => setActiveView('library')}
-                className="absolute right-2.5 top-2 w-6 h-6 rounded-lg text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-slate-700 flex items-center justify-center transition-colors"
+                className="absolute right-2 top-1.5 w-6 h-6 rounded-lg text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-slate-700 flex items-center justify-center transition-colors"
                 title="View All Study Sets"
               >
                 <LayoutGrid className="w-3.5 h-3.5" />
@@ -792,10 +841,10 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({ onRerunSetup }) =>
             </div>
           </div>
 
-          {/* Header Right Actions */}
-          <div className="flex items-center gap-2 shrink-0">
-            {/* Streak & points badges on desktop */}
-            <div className="hidden lg:flex items-center gap-2 text-xs font-semibold">
+          {/* Header Right Actions (Mobile & Desktop Synced) */}
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+            {/* Streak & points badges on wide desktop */}
+            <div className="hidden xl:flex items-center gap-2 text-xs font-semibold">
               <button
                 type="button"
                 onClick={() => triggerStreakCelebration()}
@@ -812,11 +861,153 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({ onRerunSetup }) =>
               </div>
             </div>
 
-            {/* Community Study Lounge & Peer Group Chat Button (Prominently Visible) */}
+            {/* Dedicated Study Focus Timer Pill in Top Nav (Mobile View ONLY as requested) */}
+            <div className="md:hidden relative shrink-0" ref={topNavTimerRef}>
+              <button
+                type="button"
+                onClick={() => setShowTopNavTimerMenu(prev => !prev)}
+                className={`flex items-center gap-1 px-2 py-1.5 rounded-xl text-[11px] font-bold transition-all border cursor-pointer active:scale-95 shadow-2xs ${
+                  timerState.isRunning
+                    ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-200 border-emerald-300 dark:border-emerald-700 ring-1 ring-emerald-500/30'
+                    : 'bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border-slate-200/80 dark:border-slate-700'
+                }`}
+                title={timerState.isRunning ? "Study Focus Timer Running - Click for controls" : "Open Study Focus Timer & Pomodoro"}
+                aria-label="Study timer controls"
+              >
+                <div className="relative flex items-center justify-center">
+                  <Clock className={`w-3.5 h-3.5 ${timerState.isRunning ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-600 dark:text-slate-300'}`} />
+                  {timerState.isRunning && (
+                    <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
+                  )}
+                </div>
+                <span className="font-mono text-[11px] font-extrabold tracking-tight">
+                  {StudyTimerService.formatTime(timerState.timeLeft)}
+                </span>
+              </button>
+
+              {/* Study Timer Quick Dropdown Menu */}
+              {showTopNavTimerMenu && (
+                <div className="absolute right-0 top-full mt-2 w-72 max-w-[calc(100vw-24px)] bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200/90 dark:border-slate-800 p-4 z-50 animate-in fade-in zoom-in-95 origin-top-right space-y-3">
+                  <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded-xl bg-emerald-100 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 flex items-center justify-center">
+                        <Clock className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-bold text-slate-900 dark:text-slate-100">Study Focus Timer</h4>
+                        <p className="text-[10px] text-slate-400">Pomodoro & Focus Sprints</p>
+                      </div>
+                    </div>
+                    <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+                      #{timerState.completedSessions} Sprints
+                    </span>
+                  </div>
+
+                  <div className="p-3 bg-gradient-to-br from-slate-50 to-emerald-50/50 dark:from-slate-850 dark:to-emerald-950/30 rounded-2xl border border-slate-200/70 dark:border-slate-800 text-center">
+                    <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 block mb-0.5">
+                      {TIMER_CONFIGS[timerState.mode].label} · {timerState.isRunning ? 'Active Sprint' : 'Paused'}
+                    </span>
+                    <div className="text-3xl font-mono font-black text-slate-900 dark:text-white tracking-tight">
+                      {StudyTimerService.formatTime(timerState.timeLeft)}
+                    </div>
+                    <p className="text-[10px] text-slate-400 dark:text-slate-400 truncate mt-1">
+                      Subject: <strong className="text-slate-700 dark:text-slate-300">{timerState.activeSubject}</strong>
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => StudyTimerService.toggle()}
+                      className={`py-2 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-all shadow-xs ${
+                        timerState.isRunning
+                          ? 'bg-amber-500 hover:bg-amber-600 text-white'
+                          : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                      }`}
+                    >
+                      {timerState.isRunning ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5 fill-current" />}
+                      <span>{timerState.isRunning ? 'Pause' : 'Start Focus'}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => StudyTimerService.reset()}
+                      className="py-2 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold text-xs flex items-center justify-center gap-1.5 transition-colors border border-slate-200 dark:border-slate-700"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" />
+                      <span>Reset</span>
+                    </button>
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
+                      Quick Presets
+                    </label>
+                    <div className="grid grid-cols-2 gap-1.5 text-xs">
+                      {(['pomodoro', 'deep', 'shortBreak', 'stopwatch'] as TimerMode[]).map((m) => (
+                        <button
+                          key={m}
+                          type="button"
+                          onClick={() => {
+                            StudyTimerService.setMode(m);
+                          }}
+                          className={`px-2.5 py-1.5 rounded-xl border text-left flex items-center justify-between transition-colors ${
+                            timerState.mode === m
+                              ? 'bg-blue-50 dark:bg-blue-950/60 border-blue-500 text-blue-900 dark:text-blue-100 font-bold'
+                              : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100'
+                          }`}
+                        >
+                          <span className="truncate">{TIMER_CONFIGS[m].label}</span>
+                          <span className="text-[10px] opacity-70 font-mono ml-1">
+                            {m === 'stopwatch' ? 'Count' : `${Math.round(TIMER_CONFIGS[m].defaultSeconds / 60)}m`}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                    <span className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
+                      Floating Screen Widget
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => StudyTimerService.toggleWidgetVisible()}
+                      className={`px-2.5 py-1 rounded-lg text-[10px] font-extrabold border transition-all ${
+                        timerState.isWidgetVisible
+                          ? 'bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700'
+                          : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700'
+                      }`}
+                    >
+                      {timerState.isWidgetVisible ? 'Enabled' : 'Hidden'}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* AI Credits Badge & Buy Trigger */}
+            <button
+              type="button"
+              onClick={() => setShowCreditPurchaseModal(true)}
+              className="flex items-center gap-1 sm:gap-1.5 px-2.5 py-1.5 sm:px-3.5 sm:py-2 rounded-2xl bg-gradient-to-r from-amber-50 to-blue-50 dark:from-slate-800 dark:to-slate-800 hover:from-amber-100 hover:to-blue-100 dark:hover:from-slate-750 dark:hover:to-slate-750 border border-amber-200/90 dark:border-slate-700 text-amber-900 dark:text-amber-200 font-bold text-xs shadow-2xs hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0"
+              title="AI Study Credits - Click to buy more credits with Flutterwave"
+              aria-label="Buy AI study credits"
+            >
+              <Zap className="w-3.5 h-3.5 text-amber-500 fill-amber-500 animate-pulse" />
+              <span className="hidden sm:inline">{isUserAdmin ? 'Unlimited (Admin)' : `${credits} Credits`}</span>
+              <span className="sm:hidden">{isUserAdmin ? '∞' : `${credits} cr`}</span>
+              {!isUserAdmin && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-blue-600 text-white font-black hover:bg-blue-700 hidden xs:inline">
+                  Buy
+                </span>
+              )}
+            </button>
+
+            {/* Community Study Lounge Button (Desktop/Tablet) */}
             <button
               type="button"
               onClick={() => setActiveView('community')}
-              className={`px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-2xl flex items-center gap-1.5 transition-all relative shrink-0 border cursor-pointer active:scale-95 ${
+              className={`hidden md:flex px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-2xl items-center gap-1.5 transition-all relative shrink-0 border cursor-pointer active:scale-95 ${
                 activeView === 'community'
                   ? 'bg-blue-600 text-white border-blue-600 shadow-md shadow-blue-500/25 ring-2 ring-blue-500/20'
                   : 'bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-slate-800 dark:to-indigo-950/40 text-blue-900 dark:text-blue-100 border-blue-200/90 dark:border-indigo-800 hover:border-blue-400 dark:hover:border-indigo-600 shadow-2xs'
@@ -825,7 +1016,7 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({ onRerunSetup }) =>
               aria-label="Open Community Study Lounge"
             >
               <Users className={`w-4 h-4 ${activeView === 'community' ? 'text-white' : 'text-blue-600 dark:text-blue-400'}`} />
-              <span className="text-xs font-extrabold hidden md:inline">Community</span>
+              <span className="text-xs font-extrabold">Community</span>
               <span className="flex h-2 w-2 relative">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
@@ -835,7 +1026,7 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({ onRerunSetup }) =>
               </span>
             </button>
 
-            {/* Theme Toggle Button (Light/Dark Mode Switcher) */}
+            {/* Theme Toggle Button (Desktop/Tablet) */}
             <button
               type="button"
               onClick={toggleTheme}
@@ -850,20 +1041,20 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({ onRerunSetup }) =>
               )}
             </button>
 
-            {/* Floating Study Focus Timer Toggle Button */}
+            {/* Desktop Floating Study Focus Timer Toggle Button (Sleek round button on desktop) */}
             <button
               type="button"
               onClick={handleToggleFloatingTimer}
-              className={`w-9 h-9 sm:w-10 sm:h-10 rounded-full flex items-center justify-center transition-all relative shrink-0 border ${
-                showFloatingTimer 
+              className={`hidden md:flex w-9 h-9 sm:w-10 sm:h-10 rounded-full items-center justify-center transition-all relative shrink-0 border cursor-pointer active:scale-95 ${
+                timerState.isWidgetVisible 
                   ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 border-indigo-200 dark:border-indigo-800 ring-2 ring-indigo-500/20 shadow-2xs' 
                   : 'bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border-slate-200/60 dark:border-slate-700'
               }`}
-              title={showFloatingTimer ? 'Hide Floating Focus Timer' : 'Show Floating Focus Timer (Draggable Anywhere)'}
+              title={timerState.isWidgetVisible ? 'Hide Floating Focus Timer' : 'Show Floating Focus Timer (Draggable Anywhere)'}
               aria-label="Toggle floating study timer"
             >
               <Clock className="w-4 h-4" />
-              {showFloatingTimer && (
+              {timerState.isWidgetVisible && (
                 <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-500 ring-2 ring-white dark:ring-slate-900" />
               )}
             </button>
@@ -1031,6 +1222,47 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({ onRerunSetup }) =>
                       </div>
                     </div>
 
+                    {/* Earned Virtual Badges in User Profile Dropdown */}
+                    <UserBadgesSection
+                      profile={profile}
+                      studySetsCount={studySets.length}
+                      completedTasksCount={weeklySummary?.sprintTasks.filter(t => t.completed).length || 0}
+                      reviewedItemsCount={reviewItems.filter(i => i.timesReviewed > 0).length}
+                      variant="compact"
+                    />
+
+                    {/* AI Credits Status in Dropdown */}
+                    <div className="mt-2.5 px-3 py-2 rounded-xl bg-amber-50/80 dark:bg-amber-950/40 border border-amber-200/80 dark:border-amber-800/60 flex items-center justify-between gap-2 text-xs font-semibold">
+                      <span className="flex items-center gap-1.5 text-amber-900 dark:text-amber-200 truncate">
+                        <Zap className="w-3.5 h-3.5 text-amber-500 fill-amber-500 shrink-0" />
+                        <span className="truncate">Credits: <strong>{isUserAdmin ? 'Unlimited' : `${credits}`}</strong></span>
+                      </span>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowProfileDropdown(false);
+                            setCreditModalInitialTab('history');
+                            setShowCreditPurchaseModal(true);
+                          }}
+                          className="text-[11px] font-bold px-2 py-1 rounded-lg bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-amber-200/80 dark:border-slate-700 transition-colors cursor-pointer"
+                        >
+                          History
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowProfileDropdown(false);
+                            setCreditModalInitialTab('buy');
+                            setShowCreditPurchaseModal(true);
+                          }}
+                          className="text-[11px] font-black px-2.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors cursor-pointer"
+                        >
+                          Buy
+                        </button>
+                      </div>
+                    </div>
+
                     {/* Quick Access Dual Action Buttons */}
                     <div className="mt-3 pt-2.5 border-t border-slate-100 dark:border-slate-800 flex items-center gap-2">
                       <button
@@ -1147,16 +1379,17 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({ onRerunSetup }) =>
 
                     <button
                       type="button"
-                      onClick={() => openSettings('subscription')}
-                      className="w-full px-3 py-2 rounded-xl text-left text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white flex items-center gap-2.5 transition-colors"
+                      onClick={() => {
+                        setShowProfileDropdown(false);
+                        setCreditModalInitialTab('history');
+                        setShowCreditPurchaseModal(true);
+                      }}
+                      className="w-full px-3 py-2 rounded-xl text-left text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white flex items-center gap-2.5 transition-colors cursor-pointer"
                     >
-                      <CreditCard className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                      <Zap className="w-4 h-4 text-amber-500 fill-amber-500 shrink-0" />
                       <div className="min-w-0 flex-1">
-                        <div className="flex items-center justify-between">
-                          <span className="block font-bold text-slate-900 dark:text-slate-100 leading-tight">Subscription & Plan</span>
-                          <span className="text-[9px] font-bold px-1.5 py-0.2 rounded-full bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800">Coming Soon</span>
-                        </div>
-                        <span className="text-[10px] text-slate-400 dark:text-slate-400 block leading-tight mt-0.5">Plan tiers & pricing (Coming Soon)</span>
+                        <span className="block font-bold text-slate-900 dark:text-slate-100 leading-tight">Credit Transaction History</span>
+                        <span className="text-[10px] text-slate-400 dark:text-slate-400 block leading-tight mt-0.5">Flutterwave purchases &amp; AI credit usage</span>
                       </div>
                     </button>
 
@@ -1244,22 +1477,6 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({ onRerunSetup }) =>
                 </div>
               )}
             </div>
-
-            {/* Mobile Navigation Menu Button */}
-            <button
-              type="button"
-              onClick={() => setShowMobileMenu(true)}
-              className="flex md:hidden w-9 h-9 rounded-full bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 active:scale-95 text-slate-800 dark:text-slate-100 items-center justify-center transition-all relative shrink-0 border border-slate-200 dark:border-slate-700 shadow-2xs"
-              title="All Navigation Menus & Tools"
-              aria-label="Open navigation menu"
-            >
-              <Menu className="w-4 h-4 text-slate-700 dark:text-slate-200" />
-              {unreadNotifCount > 0 ? (
-                <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-blue-600 ring-2 ring-white dark:ring-slate-900 animate-pulse" />
-              ) : isAdminEmail(user?.email) ? (
-                <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-rose-600 ring-2 ring-white dark:ring-slate-900" />
-              ) : null}
-            </button>
 
             {/* Quick Upload Button on Desktop */}
             <button
@@ -1743,13 +1960,101 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({ onRerunSetup }) =>
                             Upload lecture slides or notes. Nora AI will extract structured summaries, create flashcards, and guide your Socratic review.
                           </p>
                         </div>
-                        <button
-                          onClick={() => setShowUploadModal(true)}
-                          className="px-5 py-2.5 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-md shadow-blue-500/20 inline-flex items-center gap-1.5 active:scale-95"
-                        >
-                          <Plus className="w-3.5 h-3.5" />
-                          <span>Upload First Document</span>
-                        </button>
+                        <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
+                          <button
+                            onClick={() => setShowUploadModal(true)}
+                            className="px-5 py-2.5 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-md shadow-blue-500/20 inline-flex items-center gap-1.5 active:scale-95"
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                            <span>Upload Document</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              if (!user) return;
+                              const sampleSet: StudySet = {
+                                id: 'set_peace_conflict_' + Date.now(),
+                                userId: user.uid,
+                                title: 'Peace and Conflict Resolution Fundamentals',
+                                subject: 'Peace and Conflict Studies',
+                                materials: [
+                                  {
+                                    id: 'mat_peace_conflict_syllabus',
+                                    name: 'Peace and Conflict Resolution Fundamentals.pdf',
+                                    type: 'pdf',
+                                    content: 'Foundational concepts of peace and conflict resolution, ontology of social disputes, stages of escalation, structural violence, and multi-track peacebuilding diplomacy.',
+                                    uploadedAt: Date.now()
+                                  }
+                                ],
+                                status: 'ready',
+                                progressPercent: 100,
+                                createdAt: Date.now(),
+                                updatedAt: Date.now(),
+                                weakTopics: [],
+                                tags: ['Peace Studies', 'Conflict Resolution']
+                              };
+                              await DBService.saveStudySet(sampleSet);
+
+                              // Save sample note
+                              const sampleNotes = AIService.createComprehensiveFallbackNotes(
+                                sampleSet.title,
+                                sampleSet.materials[0].content
+                              );
+                              const noteDoc = {
+                                id: 'note_' + sampleSet.id,
+                                studySetId: sampleSet.id,
+                                userId: user.uid,
+                                title: `${sampleSet.title} — Comprehensive Study Notes`,
+                                type: 'comprehensive' as const,
+                                sections: sampleNotes.sections,
+                                summary: sampleNotes.summary,
+                                sourceReferences: sampleNotes.sourceReferences,
+                                createdAt: Date.now(),
+                                updatedAt: Date.now()
+                              };
+                              await DBService.saveNote(noteDoc);
+
+                              // Save sample flashcards
+                              const sampleCards = AIService.createFallbackFlashcards(
+                                sampleSet.title,
+                                sampleSet.materials[0].content,
+                                8
+                              );
+                              for (let i = 0; i < sampleCards.length; i++) {
+                                await DBService.saveFlashcard({
+                                  ...sampleCards[i],
+                                  id: `card_${sampleSet.id}_${i}`,
+                                  studySetId: sampleSet.id,
+                                  userId: user.uid,
+                                  createdAt: Date.now()
+                                });
+                              }
+
+                              // Save sample quiz
+                              const sampleQuiz = AIService.createFallbackQuizQuestions(
+                                sampleSet.title,
+                                sampleSet.materials[0].content,
+                                5
+                              );
+                              const quizDoc = {
+                                id: 'quiz_' + sampleSet.id,
+                                studySetId: sampleSet.id,
+                                userId: user.uid,
+                                title: `${sampleSet.title} — Diagnostic Quiz`,
+                                questions: sampleQuiz,
+                                difficulty: 'medium' as const,
+                                createdAt: Date.now()
+                              };
+                              await DBService.saveQuiz(quizDoc);
+
+                              handleStudySetCreated(sampleSet);
+                            }}
+                            className="px-4 py-2.5 rounded-2xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-800 dark:text-slate-200 font-semibold text-xs inline-flex items-center gap-1.5 active:scale-95 transition-all cursor-pointer"
+                          >
+                            <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
+                            <span>Load Peace & Conflict Sample</span>
+                          </button>
+                        </div>
                       </div>
                     ) : (
                       /* Live Study Sets formatted with clean horizontal mobile row aesthetic & Weekly Run progress */
@@ -1804,8 +2109,16 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({ onRerunSetup }) =>
                 )}
               </div>
 
-              {/* RIGHT 1 COLUMN: INTERACTIVE WEEKLY RUN SUMMARY CARD & METRICS */}
+              {/* RIGHT 1 COLUMN: USER PROFILE BADGES, WEEKLY RUN SUMMARY CARD & METRICS */}
               <div className="space-y-3.5 sm:space-y-4">
+                <UserBadgesSection
+                  profile={profile}
+                  studySetsCount={studySets.length}
+                  completedTasksCount={weeklySummary?.sprintTasks.filter(t => t.completed).length || 0}
+                  reviewedItemsCount={reviewItems.filter(i => i.timesReviewed > 0).length}
+                  variant="card"
+                />
+
                 {weeklySummary ? (
                   <WeeklyRunSummaryCard
                     summary={weeklySummary}
@@ -2328,6 +2641,13 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({ onRerunSetup }) =>
         />
       )}
 
+      {/* AI Credit Purchase & Transaction History Modal with Flutterwave */}
+      <CreditPurchaseModal
+        isOpen={showCreditPurchaseModal}
+        initialTab={creditModalInitialTab}
+        onClose={() => setShowCreditPurchaseModal(false)}
+      />
+
       {showSettingsModal && (
         <SettingsModal
           initialTab={settingsInitialTab}
@@ -2474,6 +2794,107 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({ onRerunSetup }) =>
               </button>
             </div>
 
+            {/* Active Study Timer & Pomodoro Quick Station in Mobile Drawer */}
+            <div className="p-4 bg-gradient-to-br from-slate-900 via-slate-850 to-indigo-950 text-white rounded-3xl border border-indigo-500/30 shadow-xl space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-xl bg-indigo-500/20 text-indigo-300 flex items-center justify-center border border-indigo-500/30">
+                    <Clock className="w-4 h-4 text-emerald-400" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-bold text-white flex items-center gap-1.5">
+                      <span>Study Focus Timer</span>
+                      {timerState.isRunning && (
+                        <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                      )}
+                    </h4>
+                    <p className="text-[10px] text-slate-400 font-medium">
+                      {TIMER_CONFIGS[timerState.mode].desc}
+                    </p>
+                  </div>
+                </div>
+                <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-white/10 text-emerald-300 border border-white/10">
+                  #{timerState.completedSessions} Sprints Done
+                </span>
+              </div>
+
+              {/* Big Time Readout & Controls */}
+              <div className="py-2.5 px-3 bg-black/40 rounded-2xl border border-white/5 flex items-center justify-between">
+                <div>
+                  <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 block">
+                    {TIMER_CONFIGS[timerState.mode].label} · {timerState.isRunning ? 'Active Sprint' : 'Ready'}
+                  </span>
+                  <div className="text-2xl sm:text-3xl font-mono font-black text-white tracking-tight">
+                    {StudyTimerService.formatTime(timerState.timeLeft)}
+                  </div>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => StudyTimerService.toggle()}
+                    className={`py-2 px-3.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all active:scale-95 shadow-md ${
+                      timerState.isRunning
+                        ? 'bg-amber-500 hover:bg-amber-400 text-slate-950'
+                        : 'bg-emerald-500 hover:bg-emerald-400 text-slate-950'
+                    }`}
+                  >
+                    {timerState.isRunning ? <Pause className="w-3.5 h-3.5 fill-current" /> : <Play className="w-3.5 h-3.5 fill-current" />}
+                    <span>{timerState.isRunning ? 'Pause' : 'Start'}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => StudyTimerService.reset()}
+                    className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-slate-300 hover:text-white transition-colors"
+                    title="Reset Timer"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Mode Presets */}
+              <div className="grid grid-cols-4 gap-1.5">
+                {[
+                  { m: 'pomodoro' as TimerMode, label: '25m', sub: 'Pomo' },
+                  { m: 'deep' as TimerMode, label: '50m', sub: 'Deep' },
+                  { m: 'shortBreak' as TimerMode, label: '5m', sub: 'Break' },
+                  { m: 'stopwatch' as TimerMode, label: '⏱️', sub: 'Watch' }
+                ].map(({ m, label, sub }) => (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => StudyTimerService.setMode(m)}
+                    className={`py-1.5 px-1 rounded-xl text-center border transition-all ${
+                      timerState.mode === m
+                        ? 'bg-indigo-600 text-white border-indigo-400 font-bold shadow-xs'
+                        : 'bg-white/5 hover:bg-white/10 border-white/10 text-slate-300'
+                    }`}
+                  >
+                    <div className="text-xs font-bold leading-none">{label}</div>
+                    <div className="text-[9px] text-slate-400 mt-0.5 leading-none">{sub}</div>
+                  </button>
+                ))}
+              </div>
+
+              {/* Floating Widget Toggle */}
+              <div className="pt-2 border-t border-white/10 flex items-center justify-between text-xs">
+                <span className="text-[11px] text-slate-300">
+                  Floating screen widget
+                </span>
+                <button
+                  type="button"
+                  onClick={() => StudyTimerService.toggleWidgetVisible()}
+                  className={`px-2.5 py-1 rounded-lg text-[10px] font-extrabold border transition-all ${
+                    timerState.isWidgetVisible
+                      ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                      : 'bg-white/5 text-slate-400 border-white/10'
+                  }`}
+                >
+                  {timerState.isWidgetVisible ? '✓ Visible on Screen' : '+ Show on Screen'}
+                </button>
+              </div>
+            </div>
+
             {/* Quick Theme Switcher in Mobile Drawer */}
             <div className="p-3 bg-slate-100 dark:bg-slate-800/80 rounded-2xl border border-slate-200/80 dark:border-slate-700/60 flex items-center justify-between">
               <div className="flex items-center gap-2.5">
@@ -2534,6 +2955,15 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({ onRerunSetup }) =>
                   </span>
                 </div>
               </div>
+
+              {/* Earned Virtual Badges in Mobile Profile Card */}
+              <UserBadgesSection
+                profile={profile}
+                studySetsCount={studySets.length}
+                completedTasksCount={weeklySummary?.sprintTasks.filter(t => t.completed).length || 0}
+                reviewedItemsCount={reviewItems.filter(i => i.timesReviewed > 0).length}
+                variant="compact"
+              />
 
               {/* Action Buttons: Profile Settings + Photo */}
               <div className="flex items-center gap-2 pt-1 border-t border-slate-100 dark:border-slate-800">
@@ -2604,7 +3034,8 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({ onRerunSetup }) =>
                 { id: 'cognitive-mind', label: "Nora's Mind", desc: 'AI memory dashboard', icon: BrainCircuit, color: 'bg-violet-100 dark:bg-violet-950/60 text-violet-700 dark:text-violet-300' },
                 { id: 'notifications', label: 'Notifications', desc: unreadNotifCount > 0 ? `${unreadNotifCount} new alert${unreadNotifCount > 1 ? 's' : ''}` : 'Live updates & chimes', icon: Bell, color: 'bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300' },
                 { id: 'certificates', label: 'Certificates', desc: 'Verified credentials (Coming Soon)', icon: Award, color: 'bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300' },
-                { id: 'floating-timer', label: showFloatingTimer ? 'Focus Timer (Active)' : 'Focus Timer (Hidden)', desc: 'Draggable Pomodoro widget', icon: Clock, color: 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300' },
+                { id: 'floating-timer', label: timerState.isWidgetVisible ? 'Focus Timer (Active)' : 'Focus Timer (Hidden)', desc: 'Draggable Pomodoro widget', icon: Clock, color: 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300' },
+                { id: 'credit-history', label: 'Credit History', desc: `${credits} credits · Flutterwave log`, icon: Zap, color: 'bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300' },
                 { id: 'complaints', label: 'Help & Complaints', desc: 'Report bugs or feedback', icon: MessageSquareWarning, color: 'bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300' },
                 { id: 'profile-settings', label: 'Profile Settings', desc: 'Account & preferences', icon: User, color: 'bg-blue-100 dark:bg-blue-950/60 text-blue-800 dark:text-blue-300' },
                 { id: 'change-photo', label: 'Profile Photo', desc: 'Upload or avatar picker', icon: Camera, color: 'bg-indigo-100 dark:bg-indigo-950/60 text-indigo-800 dark:text-indigo-300' }
@@ -2614,6 +3045,12 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({ onRerunSetup }) =>
                   <button
                     key={id}
                     onClick={() => {
+                      if (id === 'credit-history') {
+                        setShowMobileMenu(false);
+                        setCreditModalInitialTab('history');
+                        setShowCreditPurchaseModal(true);
+                        return;
+                      }
                       if (id === 'complaints') {
                         setShowMobileMenu(false);
                         setComplaintModalInitialTab('submit');

@@ -22,6 +22,7 @@ import {
   PracticeTestAttempt, 
   StudyPlan, 
   TutorSession, 
+  TutorSessionFeedback,
   TutorMessage,
   EssayFeedback,
   TeachingStyle,
@@ -32,7 +33,8 @@ import {
   TeachingEvolutionLog,
   ReviewLessonItem,
   SpacedRepetitionStage,
-  AnkiRating
+  AnkiRating,
+  CreditTransaction
 } from '../types';
 
 export class DBService {
@@ -108,6 +110,195 @@ export class DBService {
     } catch (e) {
       console.warn('Notice saving profile (offline/retrying):', e);
     }
+  }
+
+  // Helper to ensure every profile has at least its initial welcome bonus in history
+  private static ensureBaseHistory(profile: UserProfile): CreditTransaction[] {
+    if (profile.creditsHistory && profile.creditsHistory.length > 0) {
+      return profile.creditsHistory;
+    }
+    return [
+      {
+        id: 'ctx_welcome_' + profile.uid,
+        userId: profile.uid,
+        userEmail: profile.email,
+        amount: 10,
+        type: 'bonus',
+        reason: 'Welcome Starter Bonus (10 Free AI Study Credits)',
+        timestamp: profile.createdAt || Date.now()
+      }
+    ];
+  }
+
+  // Credit System Management
+  static async getUserCredits(userId: string): Promise<number> {
+    if (!userId) return 0;
+    const profile = await this.getUserProfile(userId);
+    if (!profile) return 0;
+    // Admins have virtually unlimited credits
+    if (profile.role === 'admin' || profile.email === 'adedayoademola171@gmail.com') {
+      return 99999;
+    }
+    // Default to 10 free credits for initial welcome if undefined
+    if (profile.aiCredits === undefined || !profile.creditsHistory || profile.creditsHistory.length === 0) {
+      if (profile.aiCredits === undefined) {
+        profile.aiCredits = 10;
+      }
+      profile.creditsHistory = this.ensureBaseHistory(profile);
+      await this.saveUserProfile(profile);
+    }
+    return profile.aiCredits;
+  }
+
+  static async deductCredits(
+    userId: string, 
+    amount: number, 
+    reason: string
+  ): Promise<{ success: boolean; newBalance: number; transaction?: CreditTransaction; history?: CreditTransaction[]; error?: string }> {
+    if (!userId) return { success: false, newBalance: 0, error: 'User not signed in' };
+    const profile = await this.getUserProfile(userId);
+    if (!profile) return { success: false, newBalance: 0, error: 'User profile not found' };
+
+    const isAdmin = profile.role === 'admin' || profile.email === 'adedayoademola171@gmail.com';
+    const currentBalance = isAdmin ? 99999 : (profile.aiCredits !== undefined ? profile.aiCredits : 10);
+
+    if (!isAdmin && currentBalance < amount) {
+      return { 
+        success: false, 
+        newBalance: currentBalance, 
+        error: `Insufficient AI credits. You need ${amount} credits, but you have ${currentBalance}.` 
+      };
+    }
+
+    const newBalance = isAdmin ? 99999 : Math.max(0, currentBalance - amount);
+    const tx: CreditTransaction = {
+      id: 'ctx_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+      userId,
+      userEmail: profile.email,
+      amount: -amount,
+      type: 'usage',
+      reason,
+      timestamp: Date.now()
+    };
+
+    const baseHistory = this.ensureBaseHistory(profile);
+    const updatedHistory = [tx, ...baseHistory].slice(0, 100);
+    const updatedProfile: UserProfile = {
+      ...profile,
+      aiCredits: newBalance,
+      creditsHistory: updatedHistory,
+      updatedAt: Date.now()
+    };
+
+    await this.saveUserProfile(updatedProfile);
+
+    try {
+      localStorage.setItem(`learnora_credit_tx_${userId}`, JSON.stringify(updatedHistory));
+    } catch {}
+
+    try {
+      await setDoc(doc(db, 'creditTransactions', tx.id), this.cleanUndefined(tx));
+    } catch (_) {}
+
+    // Broadcast update across windows & tabs
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('learnora_credits_updated', {
+        detail: { userId, newBalance, transaction: tx, history: updatedHistory }
+      }));
+    }
+
+    return { success: true, newBalance, transaction: tx, history: updatedHistory };
+  }
+
+  static async addCredits(
+    userId: string,
+    amount: number,
+    reason: string,
+    meta?: {
+      reference?: string;
+      currency?: 'NGN' | 'USD';
+      pricePaid?: number;
+      type?: 'purchase' | 'bonus' | 'admin_grant';
+    }
+  ): Promise<{ success: boolean; newBalance: number; transaction?: CreditTransaction; history?: CreditTransaction[] }> {
+    if (!userId) return { success: false, newBalance: 0 };
+    const profile = await this.getUserProfile(userId);
+    if (!profile) return { success: false, newBalance: 0 };
+
+    const isAdmin = profile.role === 'admin' || profile.email === 'adedayoademola171@gmail.com';
+    const currentBalance = profile.aiCredits !== undefined ? profile.aiCredits : 10;
+    const newBalance = isAdmin ? 99999 : currentBalance + amount;
+
+    const tx: CreditTransaction = {
+      id: 'ctx_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+      userId,
+      userEmail: profile.email,
+      amount,
+      type: meta?.type || 'purchase',
+      reason,
+      reference: meta?.reference,
+      currency: meta?.currency || 'NGN',
+      pricePaid: meta?.pricePaid,
+      timestamp: Date.now()
+    };
+
+    const baseHistory = this.ensureBaseHistory(profile);
+    const updatedHistory = [tx, ...baseHistory].slice(0, 100);
+    const updatedProfile: UserProfile = {
+      ...profile,
+      aiCredits: newBalance,
+      creditsHistory: updatedHistory,
+      updatedAt: Date.now()
+    };
+
+    await this.saveUserProfile(updatedProfile);
+
+    try {
+      localStorage.setItem(`learnora_credit_tx_${userId}`, JSON.stringify(updatedHistory));
+    } catch {}
+
+    // Save transaction to separate collection for auditing
+    try {
+      await setDoc(doc(db, 'creditTransactions', tx.id), this.cleanUndefined(tx));
+    } catch (_) {}
+
+    // Broadcast update
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('learnora_credits_updated', {
+        detail: { userId, newBalance, transaction: tx, history: updatedHistory }
+      }));
+    }
+
+    return { success: true, newBalance, transaction: tx, history: updatedHistory };
+  }
+
+  static async getCreditTransactions(userId: string): Promise<CreditTransaction[]> {
+    if (!userId) return [];
+    const profile = await this.getUserProfile(userId);
+    if (profile?.creditsHistory && profile.creditsHistory.length > 0) {
+      return profile.creditsHistory;
+    }
+    try {
+      const localRaw = localStorage.getItem(`learnora_credit_tx_${userId}`);
+      if (localRaw) {
+        const parsed = JSON.parse(localRaw) as CreditTransaction[];
+        if (parsed.length > 0) return parsed;
+      }
+    } catch {}
+    try {
+      const q = query(
+        collection(db, 'creditTransactions'),
+        where('userId', '==', userId),
+        orderBy('timestamp', 'desc')
+      );
+      const snap = await getDocs(q);
+      const docs = snap.docs.map(d => ({ id: d.id, ...d.data() } as CreditTransaction));
+      if (docs.length > 0) return docs;
+    } catch {}
+    if (profile) {
+      return this.ensureBaseHistory(profile);
+    }
+    return [];
   }
 
   // Study Sets
@@ -370,10 +561,54 @@ export class DBService {
 
   static async saveTutorSession(session: TutorSession): Promise<void> {
     try {
+      const existingRaw = localStorage.getItem(`learnora_tutor_sessions_${session.userId}`);
+      const list: TutorSession[] = existingRaw ? JSON.parse(existingRaw) : [];
+      const idx = list.findIndex(s => s.id === session.id);
+      if (idx >= 0) {
+        list[idx] = { ...list[idx], ...session };
+      } else {
+        list.unshift(session);
+      }
+      localStorage.setItem(`learnora_tutor_sessions_${session.userId}`, JSON.stringify(list.slice(0, 100)));
+    } catch {}
+
+    try {
       const data = this.cleanUndefined(session);
       await setDoc(doc(db, 'tutorSessions', session.id), data, { merge: true });
     } catch (e) {
       console.warn('Notice saving tutor session:', e);
+    }
+  }
+
+  static async saveTutorSessionFeedback(feedback: TutorSessionFeedback): Promise<void> {
+    const cleaned = this.cleanUndefined(feedback);
+    try {
+      localStorage.setItem(`learnora_session_feedback_${feedback.sessionId}`, JSON.stringify(cleaned));
+      const allRaw = localStorage.getItem(`learnora_user_tutor_feedbacks_${feedback.userId}`);
+      const allList: TutorSessionFeedback[] = allRaw ? JSON.parse(allRaw) : [];
+      const filtered = allList.filter(f => f.sessionId !== feedback.sessionId);
+      filtered.unshift(cleaned);
+      localStorage.setItem(`learnora_user_tutor_feedbacks_${feedback.userId}`, JSON.stringify(filtered.slice(0, 100)));
+    } catch {}
+
+    try {
+      await setDoc(doc(db, 'tutorSessionFeedback', feedback.id), cleaned, { merge: true });
+      await setDoc(doc(db, 'tutorSessions', feedback.sessionId), {
+        feedback: cleaned,
+        completedAt: feedback.createdAt,
+        updatedAt: feedback.createdAt
+      }, { merge: true });
+    } catch (e) {
+      console.warn('Notice saving tutor session feedback to cloud:', e);
+    }
+  }
+
+  static getLocalSessionFeedback(sessionId: string): TutorSessionFeedback | null {
+    try {
+      const raw = localStorage.getItem(`learnora_session_feedback_${sessionId}`);
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
     }
   }
 

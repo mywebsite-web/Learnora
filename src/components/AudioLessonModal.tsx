@@ -14,6 +14,7 @@ import { StudySet } from '../types';
 import { AIService } from '../services/aiService';
 import { VoiceService } from '../services/voiceService';
 import { ElevenLabsVoiceSelector } from './ElevenLabsVoiceSelector';
+import { MultilingualAudioPlayer } from './MultilingualAudioPlayer';
 
 interface AudioLessonModalProps {
   studySet: StudySet;
@@ -143,39 +144,12 @@ export const AudioLessonModal: React.FC<AudioLessonModalProps> = ({ studySet, on
             </div>
           ) : (
             <div className="space-y-4 animate-fade-in">
-              {/* Audio Player Controls */}
-              <div className="bg-slate-900 text-white p-6 rounded-2xl flex flex-col items-center justify-between border border-slate-800">
-                <div className="flex items-center gap-6">
-                  <button
-                    onClick={() => {
-                      if ('speechSynthesis' in window) window.speechSynthesis.cancel();
-                      setIsPlaying(false);
-                    }}
-                    className="text-slate-400 hover:text-white"
-                  >
-                    <RotateCcw className="w-5 h-5" />
-                  </button>
-
-                  <button
-                    onClick={togglePlay}
-                    className="w-14 h-14 rounded-full bg-indigo-500 hover:bg-indigo-400 flex items-center justify-center text-white shadow-lg transition-transform active:scale-95"
-                  >
-                    {isPlaying ? <Pause className="w-6 h-6" /> : <Play className="w-6 h-6 ml-0.5" />}
-                  </button>
-
-                  <button
-                    onClick={() => setPlaybackSpeed(playbackSpeed === 1 ? 1.25 : playbackSpeed === 1.25 ? 1.5 : 1)}
-                    className="text-xs font-mono bg-white/10 px-2 py-1 rounded text-slate-300 hover:text-white"
-                  >
-                    {playbackSpeed}x
-                  </button>
-                </div>
-
-                <div className="w-full mt-4 flex items-center justify-between text-xs text-slate-400">
-                  <span>Nora Audio Engine</span>
-                  <span>{isPlaying ? 'Playing Audio' : 'Paused'}</span>
-                </div>
-              </div>
+              {/* Multilingual Gemini 3.8 Flash TTS Audio Player */}
+              <MultilingualAudioPlayer
+                textToRead={script}
+                lessonTitle={`${studySet.title} (${mode})`}
+                textKey={`audio_lesson_${studySet.id}_${mode}`}
+              />
 
               {/* Transcript */}
               <div>

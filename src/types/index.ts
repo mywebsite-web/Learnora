@@ -63,6 +63,21 @@ export interface UserProfile {
   studySetsCount?: number;
   lastActiveAt?: number;
   isOnline?: boolean;
+  aiCredits?: number;
+  creditsHistory?: CreditTransaction[];
+}
+
+export interface CreditTransaction {
+  id: string;
+  userId: string;
+  userEmail?: string;
+  amount: number; // e.g. +5, -1, -2
+  type: 'purchase' | 'usage' | 'bonus' | 'admin_grant';
+  reason: string;
+  reference?: string;
+  currency?: 'NGN' | 'USD';
+  pricePaid?: number;
+  timestamp: number;
 }
 
 export const ADMIN_EMAIL = 'adedayoademola171@gmail.com';
@@ -141,12 +156,32 @@ export interface CitationRef {
   quote?: string;
 }
 
+export interface NoteBulletConcept {
+  term: string;
+  etymology?: string; // e.g. "Latin: confligere"
+  definition: string;
+  citationPages?: (number | string)[]; // e.g. [2, 9]
+}
+
+export interface NoteTable {
+  title?: string;
+  intro?: string;
+  headers: string[]; // e.g. ["Stage/Phase", "Description"]
+  rows: {
+    cells: string[];
+    citationPages?: (number | string)[];
+  }[];
+}
+
 export interface NoteSection {
   id: string;
   heading: string;
+  intro?: string;
   content: string;
+  bulletConcepts?: NoteBulletConcept[];
+  tables?: NoteTable[];
   subsections?: { title: string; content: string }[];
-  keyTerms?: { term: string; definition: string }[];
+  keyTerms?: { term: string; definition: string; etymology?: string; citationPages?: (number | string)[] }[];
   formulasOrDates?: string[];
   keyTakeaways?: string[];
   citations?: CitationRef[];
@@ -268,6 +303,7 @@ export interface TutorMessage {
   sessionId: string;
   sender: 'user' | 'nora';
   content: string;
+  language?: string;
   mode?: TutorMode;
   citations?: CitationRef[];
   interactiveOptions?: string[]; // for interactive follow-up
@@ -292,6 +328,23 @@ export interface TutorMessage {
   imageUrl?: string;
 }
 
+export interface TutorSessionFeedback {
+  id: string;
+  sessionId: string;
+  userId: string;
+  studySetId?: string;
+  studySetTitle?: string;
+  rating: number; // 1 to 5 stars
+  helpfulnessLevel: 'not-helpful' | 'somewhat-helpful' | 'helpful' | 'very-helpful' | 'extremely-helpful';
+  comprehensionAfter: 'struggling' | 'partially-understood' | 'mastered';
+  tags: string[];
+  comment?: string;
+  tutorMode: TutorMode;
+  teachingPersona: string;
+  messageCount: number;
+  createdAt: number;
+}
+
 export interface TutorSession {
   id: string;
   studySetId?: string;
@@ -300,6 +353,8 @@ export interface TutorSession {
   activeMode: TutorMode;
   teachingStyleId?: string;
   identifiedWeakTopics: string[];
+  feedback?: TutorSessionFeedback;
+  completedAt?: number;
   createdAt: number;
   updatedAt: number;
 }

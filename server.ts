@@ -153,6 +153,113 @@ app.post('/api/ai/generate', async (req, res) => {
   }
 });
 
+// Multilingual Dynamic System Prompts for Native Gemini TTS (gemini-3.8-flash-tts)
+const MULTILINGUAL_TTS_INSTRUCTIONS: Record<string, string> = {
+  English: 'You are an educational tutor speaking with a clear, measured, natural Nigerian English accent.',
+  Yoruba: 'You are a native Yoruba speaker reading educational text. Ensure perfect tonal inflections, proper vowel pronunciations, and a natural, clear cadence.',
+  Igbo: 'You are a native Igbo speaker reading educational text. Ensure accurate pronunciation of words, appropriate tone-marking inflections, and a natural flow.',
+  Hausa: 'You are a native Hausa speaker reading educational text. Deliver the speech clearly with standard, natural Hausa phonetics.',
+  French: 'You are a professional, clear French language tutor reading educational material with flawless native French pronunciation.'
+};
+
+// API Endpoint: Multilingual Text-to-Speech via native Gemini API
+app.post('/api/ai/tts', async (req, res) => {
+  try {
+    const { text, language = 'English', voiceName = 'Kore' } = req.body;
+
+    if (!text || typeof text !== 'string') {
+      return res.status(400).json({ success: false, error: 'Text is required for TTS' });
+    }
+
+    const normalizedLang = Object.keys(MULTILINGUAL_TTS_INSTRUCTIONS).find(
+      l => l.toLowerCase() === String(language).toLowerCase()
+    ) || 'English';
+
+    const systemInstruction = MULTILINGUAL_TTS_INSTRUCTIONS[normalizedLang];
+
+    // Clean inline markdown, badges, citations, bullet points, and code markers so it sounds natural
+    const cleanSpeechText = text
+      .replace(/\[(?:📄\s*|page\s*|p\.\s*)?\d+\]/gi, '')
+      .replace(/\[\d+\]/g, '')
+      .replace(/[*#_`~>|]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 3500);
+
+    let speechInput = cleanSpeechText;
+    if (normalizedLang !== 'English' && !/translate|fluent|èdè|asụsụ|harshen|en français/i.test(speechInput.slice(0, 60))) {
+      speechInput = `Please speak and read the following educational study material in natural, fluent ${normalizedLang}: ${cleanSpeechText}`;
+    }
+
+    const client = getGeminiClient();
+
+    // Primary model: gemini-3.8-flash-tts (the user-specified flagship Voice Design model with natural Nigerian English accent).
+    // High-resilience fallback: gemini-3.8-flash-lite-tts
+    const modelsToTry = ['gemini-3.8-flash-tts', 'gemini-3.8-flash-lite-tts'];
+    let lastError: any = null;
+
+    for (const modelName of modelsToTry) {
+      try {
+        const response = await client.models.generateContent({
+          model: modelName,
+          contents: [
+            {
+              role: 'user',
+              parts: [
+                {
+                  text: speechInput,
+                  speechMetadata: {
+                    style: systemInstruction
+                  }
+                }
+              ]
+            }
+          ],
+          config: {
+            responseModalities: ['AUDIO'],
+            speechConfig: {
+              voiceConfig: {
+                prebuiltVoiceConfig: { voiceName: voiceName || 'Kore' }
+              }
+            }
+          }
+        });
+
+        const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+
+        if (base64Audio) {
+          const audioUrl = `data:audio/wav;base64,${base64Audio}`;
+          return res.json({
+            success: true,
+            audioUrl,
+            mimeType: 'audio/wav',
+            language: normalizedLang,
+            systemInstructionUsed: systemInstruction,
+            modelUsed: modelName
+          });
+        }
+      } catch (err: any) {
+        const isQuotaErr = err?.status === 429 || err?.message?.includes('429') || err?.message?.includes('RESOURCE_EXHAUSTED');
+        if (isQuotaErr) {
+          console.info(`[Gemini TTS] Model '${modelName}' free quota reached (10/day). Falling back to backup voice engine.`);
+        } else {
+          console.info(`[Gemini TTS] Model '${modelName}' notice:`, err?.message?.slice(0, 100) || 'Transient failure');
+        }
+        lastError = err;
+      }
+    }
+
+    throw lastError || new Error('Failed to generate audio output from Gemini TTS');
+  } catch (error: any) {
+    console.error('[Gemini TTS Proxy] Error:', error?.message || error);
+    return res.status(500).json({
+      success: false,
+      error: error?.message || 'Failed to generate speech audio via Gemini TTS',
+      quotaExhausted: error?.status === 429 || String(error?.message).includes('429') || String(error?.message).includes('RESOURCE_EXHAUSTED')
+    });
+  }
+});
+
 // Helper to get effective server-configured ElevenLabs API key
 function getEffectiveElevenLabsKey(): string {
   // 1. Process environment (e.g. injected by runtime / secrets)

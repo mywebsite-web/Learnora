@@ -45,10 +45,11 @@ import {
   CheckCheck,
   Target,
   Sun,
-  Moon
+  Moon,
+  Star
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
-import { StudySet, TutorMode, TutorMessage, TeachingStyle, StudentCognitiveMemory, TeachingEvolutionLog, TutorSession } from '../types';
+import { StudySet, TutorMode, TutorMessage, TeachingStyle, StudentCognitiveMemory, TeachingEvolutionLog, TutorSession, TutorSessionFeedback } from '../types';
 import { AIService } from '../services/aiService';
 import { DBService } from '../services/dbService';
 import { LearningMemoryService } from '../services/learningMemoryService';
@@ -56,7 +57,11 @@ import { NoraCognitiveDashboard } from './NoraCognitiveDashboard';
 import { VoiceService } from '../services/voiceService';
 import { ElevenLabsVoiceSelector } from './ElevenLabsVoiceSelector';
 import { AiRobotMascot } from './AiRobotMascot';
+import { MultilingualAudioPlayer } from './MultilingualAudioPlayer';
 import { useTheme } from '../context/ThemeContext';
+import { useAuth } from '../context/AuthContext';
+import { CreditPurchaseModal } from './CreditPurchaseModal';
+import { TutorSessionFeedbackModal } from './TutorSessionFeedbackModal';
 
 // Lightweight, resilient Markdown-to-React text formatter for Nora's academic outputs
 const renderInlineFormatted = (text: string) => {
@@ -339,6 +344,149 @@ export const NoraTutorView: React.FC<NoraTutorViewProps> = ({
   const [sessionCategoryFilter, setSessionCategoryFilter] = useState<'all' | 'set'>('all');
   const [copiedMsgId, setCopiedMsgId] = useState<string | null>(null);
 
+  // Credit limits & purchase modal
+  const { profile: currentAuthProfile, credits, deductCredits, updateProfileData } = useAuth();
+  const [showCreditModal, setShowCreditModal] = useState(false);
+  const isUserAdmin = currentAuthProfile?.role === 'admin' || currentAuthProfile?.email === 'adedayoademola171@gmail.com';
+
+  // Post-Tutor Session Feedback State
+  const [showFeedbackModal, setShowFeedbackModal] = useState(false);
+  const [feedbackTriggeredByExit, setFeedbackTriggeredByExit] = useState(false);
+  const [sessionFeedback, setSessionFeedback] = useState<TutorSessionFeedback | null>(null);
+
+  const hasUserInteracted = useMemo(() => {
+    return messages.some((m) => m.sender === 'user');
+  }, [messages]);
+
+  // Sync local or session feedback whenever currentSessionId or sessions change
+  useEffect(() => {
+    if (!currentSessionId) return;
+    const matchedSession = sessions.find((s) => s.id === currentSessionId);
+    if (matchedSession?.feedback) {
+      setSessionFeedback(matchedSession.feedback);
+      return;
+    }
+    const localFb = DBService.getLocalSessionFeedback(currentSessionId);
+    setSessionFeedback(localFb);
+  }, [currentSessionId, sessions]);
+
+  const handleConcludeOrBack = () => {
+    if (hasUserInteracted && !sessionFeedback) {
+      VoiceService.stop();
+      setFeedbackTriggeredByExit(true);
+      setShowFeedbackModal(true);
+      return;
+    }
+    if (onBack) {
+      onBack();
+    }
+  };
+
+  const handleOpenFeedbackModal = (fromExit = false) => {
+    VoiceService.stop();
+    setFeedbackTriggeredByExit(fromExit);
+    setShowFeedbackModal(true);
+  };
+
+  const handleSubmitSessionFeedback = async (data: {
+    rating: number;
+    helpfulnessLevel: TutorSessionFeedback['helpfulnessLevel'];
+    comprehensionAfter: TutorSessionFeedback['comprehensionAfter'];
+    tags: string[];
+    comment: string;
+  }) => {
+    const activeSessionObj = sessions.find((s) => s.id === currentSessionId);
+    const resolvedTitle =
+      activeSessionObj?.title ||
+      (studySet ? studySet.title : 'General Socratic Session');
+
+    const fb: TutorSessionFeedback = {
+      id: `fb_${currentSessionId}_${Date.now()}`,
+      sessionId: currentSessionId,
+      userId: userId || 'guest',
+      studySetId: studySet?.id,
+      studySetTitle: studySet?.title,
+      rating: data.rating,
+      helpfulnessLevel: data.helpfulnessLevel,
+      comprehensionAfter: data.comprehensionAfter,
+      tags: data.tags,
+      comment: data.comment || undefined,
+      tutorMode: activeMode,
+      teachingPersona: selectedStyle,
+      messageCount: messages.length,
+      createdAt: Date.now()
+    };
+
+    setSessionFeedback(fb);
+    await DBService.saveTutorSessionFeedback(fb);
+
+    // Update local sessions state with feedback attached
+    setSessions((prev) =>
+      prev.map((s) =>
+        s.id === currentSessionId
+          ? { ...s, feedback: fb, completedAt: fb.createdAt, updatedAt: fb.createdAt }
+          : s
+      )
+    );
+
+    // Award +15 Study XP points for completing & rating the session
+    if (currentAuthProfile) {
+      updateProfileData({
+        points: (currentAuthProfile.points || 100) + 15
+      }).catch(() => {});
+    }
+
+    // Celebrate with confetti
+    try {
+      confetti({ particleCount: 70, spread: 65, origin: { y: 0.6 } });
+    } catch {}
+
+    // Feed rating & comprehension back into Nora's Cognitive Memory
+    try {
+      if (cognitiveMemory) {
+        const nextPacing: 'deliberate' | 'standard' | 'accelerated' =
+          data.tags.includes('Too fast / complex') || data.comprehensionAfter === 'struggling'
+            ? 'deliberate'
+            : data.tags.includes('Too slow / basic')
+            ? 'accelerated'
+            : cognitiveMemory.preferredExplanations.pacingSpeed;
+
+        const adjustmentSummary = `Student rated session ${data.rating}/5 stars (${data.helpfulnessLevel}, comprehension: ${data.comprehensionAfter}). ${
+          data.tags.length > 0 ? `Highlights: ${data.tags.join(', ')}. ` : ''
+        }${data.comment ? `Student note: "${data.comment}"` : ''}`.trim();
+
+        const updatedMem: StudentCognitiveMemory = {
+          ...cognitiveMemory,
+          preferredExplanations: {
+            ...cognitiveMemory.preferredExplanations,
+            pacingSpeed: nextPacing
+          },
+          noraPedagogicalStrategy: {
+            ...cognitiveMemory.noraPedagogicalStrategy,
+            recentSelfAdjustment: adjustmentSummary,
+            adaptationLevel: Math.min(100, (cognitiveMemory.noraPedagogicalStrategy.adaptationLevel || 1) + 1),
+            totalInteractionsReflected: (cognitiveMemory.noraPedagogicalStrategy.totalInteractionsReflected || 0) + 1
+          },
+          lastSelfReflectionAt: Date.now(),
+          updatedAt: Date.now()
+        };
+        setCognitiveMemory(updatedMem);
+        await DBService.saveCognitiveMemory(updatedMem);
+
+        await DBService.recordTeachingEvolutionLog({
+          id: 'log_fb_' + Date.now(),
+          userId: userId || 'guest',
+          interactionSummary: `Post-Session Feedback on "${resolvedTitle}" (${data.rating}/5 ★)`,
+          studentGraspObserved: data.comprehensionAfter,
+          tutorAdjustmentMade: adjustmentSummary,
+          timestamp: Date.now()
+        });
+      }
+    } catch (e) {
+      console.warn('Notice updating cognitive memory with session feedback:', e);
+    }
+  };
+
   const handleCopyMessage = async (msgId: string, text: string) => {
     try {
       await navigator.clipboard.writeText(text);
@@ -541,6 +689,12 @@ export const NoraTutorView: React.FC<NoraTutorViewProps> = ({
 
   // Start a fresh new chat session
   const handleStartNewChat = async () => {
+    // Credit verification check: prevent access if balance is zero
+    if (!isUserAdmin && credits <= 0) {
+      setShowCreditModal(true);
+      return;
+    }
+
     VoiceService.stop();
     const newSessId = 'sess_' + Date.now();
     const newTitle = studySet ? `${studySet.title} (New Session)` : 'New Socratic Exploration';
@@ -721,6 +875,51 @@ export const NoraTutorView: React.FC<NoraTutorViewProps> = ({
     const textToSend = messageText || input;
     if (!textToSend.trim() || loading) return;
 
+    // Intercept top up requests from chips or text
+    if (textToSend.includes('Top Up Credits Now') || textToSend.includes('Top up credits') || textToSend.includes('Buy Credits')) {
+      setShowCreditModal(true);
+      return;
+    }
+
+    // Strict credit verification check: prevent access if balance is zero
+    if (!isUserAdmin && credits <= 0) {
+      const creditNotice: TutorMessage = {
+        id: 'msg_credit_limit_' + Date.now(),
+        sessionId: currentSessionId,
+        sender: 'nora',
+        mode: activeMode,
+        content: `Your AI Study Credit balance is **0 credits**.\n\nTo interact with Nora and continue your personalized Socratic learning session, please top up your credits.\n\n*Credits start at ₦250 for 5 credits ($0.25).*`,
+        interactiveOptions: [
+          'Top Up Credits Now ⚡'
+        ],
+        timestamp: Date.now()
+      };
+      setMessages((prev) => [...prev, creditNotice]);
+      setShowCreditModal(true);
+      return;
+    }
+
+    // Verify and subtract 1 credit per usage BEFORE starting generation
+    if (!isUserAdmin) {
+      const deductRes = await deductCredits(1, `Nora AI Socratic Tutoring (${studySet?.title || 'General Session'})`);
+      if (!deductRes.success) {
+        setShowCreditModal(true);
+        const creditNotice: TutorMessage = {
+          id: 'msg_credit_limit_' + Date.now(),
+          sessionId: currentSessionId,
+          sender: 'nora',
+          mode: activeMode,
+          content: `You have run out of **AI Study Credits**. To continue our Socratic dialogue and receive interactive tutoring, please top up your credits.\n\n*Credits start at ₦250 for 5 credits ($0.25).*`,
+          interactiveOptions: [
+            'Top Up Credits Now ⚡'
+          ],
+          timestamp: Date.now()
+        };
+        setMessages((prev) => [...prev, creditNotice]);
+        return;
+      }
+    }
+
     const userMsg: TutorMessage = {
       id: 'usr_' + Date.now(),
       sessionId: currentSessionId,
@@ -756,6 +955,7 @@ export const NoraTutorView: React.FC<NoraTutorViewProps> = ({
         sender: 'nora',
         mode: activeMode,
         content: noraResponse.content || 'Let us continue exploring this topic.',
+        language: noraResponse.language,
         questionToStudent: noraResponse.questionToStudent,
         chatQuiz: noraResponse.chatQuiz,
         interactiveOptions: noraResponse.interactiveOptions || ['Can you give an analogy?', 'Test me with a harder question', 'Explain simply'],
@@ -917,6 +1117,12 @@ export const NoraTutorView: React.FC<NoraTutorViewProps> = ({
     const selectedIdx = pendingQuizSelections[msg.id];
     if (selectedIdx === undefined) return;
 
+    // Credit verification check: prevent access if balance is zero
+    if (!isUserAdmin && credits <= 0) {
+      setShowCreditModal(true);
+      return;
+    }
+
     const isCorrect = selectedIdx === msg.chatQuiz.correctIndex;
     const chosenOptionText = msg.chatQuiz.options[selectedIdx];
 
@@ -986,7 +1192,7 @@ export const NoraTutorView: React.FC<NoraTutorViewProps> = ({
           {onBack && (
             <button
               type="button"
-              onClick={onBack}
+              onClick={handleConcludeOrBack}
               className="px-3 py-2 rounded-xl text-slate-700 dark:text-slate-200 hover:text-slate-900 dark:hover:text-white bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 transition-all flex items-center gap-1.5 font-bold text-xs active:scale-95 shadow-2xs shrink-0"
               title="Return to Dashboard"
             >
@@ -1043,6 +1249,23 @@ export const NoraTutorView: React.FC<NoraTutorViewProps> = ({
             <Plus className="w-3.5 h-3.5" />
             <span className="hidden md:inline">New Chat</span>
           </button>
+
+          {/* End & Rate Lesson Button */}
+          <button
+            type="button"
+            onClick={() => handleOpenFeedbackModal(false)}
+            className={`p-2 sm:px-2.5 sm:py-1.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition-all active:scale-95 shadow-2xs shrink-0 cursor-pointer ${
+              sessionFeedback
+                ? 'bg-emerald-50 dark:bg-emerald-950/60 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300'
+                : 'bg-amber-50 dark:bg-amber-950/50 hover:bg-amber-100 dark:hover:bg-amber-900/60 border-amber-200/80 dark:border-amber-800 text-amber-800 dark:text-amber-300'
+            }`}
+            title={sessionFeedback ? `Lesson rated ${sessionFeedback.rating}/5 stars — Click to edit` : 'Conclude and rate this Socratic lesson'}
+          >
+            <Star className={`w-3.5 h-3.5 ${sessionFeedback ? 'text-amber-500 fill-amber-500' : 'text-amber-500 fill-amber-400'}`} />
+            <span className="hidden xl:inline">
+              {sessionFeedback ? `Rated ${sessionFeedback.rating}/5` : 'Rate Lesson'}
+            </span>
+          </button>
         </div>
 
         {/* Center Zone: Segmented Pedagogical Modes */}
@@ -1066,6 +1289,23 @@ export const NoraTutorView: React.FC<NoraTutorViewProps> = ({
 
         {/* Right Zone: Persona + Memory + Audio + Theme Toggle + Inspector Toggle + Clear */}
         <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+          {/* AI Credits Top-up Trigger */}
+          <button
+            type="button"
+            onClick={() => setShowCreditModal(true)}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 hover:bg-amber-100 dark:hover:bg-amber-900/50 border border-amber-200/80 dark:border-amber-800/80 text-amber-900 dark:text-amber-200 text-xs font-bold shadow-2xs transition-all active:scale-95 cursor-pointer"
+            title="AI Study Credits - Click to buy more credits"
+          >
+            <Zap className="w-3.5 h-3.5 text-amber-500 fill-amber-500 animate-pulse" />
+            <span className="hidden md:inline">{isUserAdmin ? 'Unlimited' : `${credits} Credits`}</span>
+            <span className="md:hidden">{isUserAdmin ? '∞' : credits}</span>
+            {!isUserAdmin && (
+              <span className="text-[10px] px-1 py-0.2 rounded bg-amber-600 text-white font-black">
+                +
+              </span>
+            )}
+          </button>
+
           {/* Teaching Persona Selector */}
           <button
             onClick={() => setShowStylePickerModal(true)}
@@ -1199,10 +1439,8 @@ export const NoraTutorView: React.FC<NoraTutorViewProps> = ({
             onClick={() => {
               if (isFocusMode) {
                 setIsFocusMode(false);
-              } else if (onBack) {
-                onBack();
-              } else if (typeof window !== 'undefined' && window.history) {
-                window.history.back();
+              } else {
+                handleConcludeOrBack();
               }
             }}
             className="w-10 h-10 rounded-xl text-slate-700 dark:text-slate-200 bg-slate-100/80 dark:bg-slate-800/80 hover:bg-slate-200 dark:hover:bg-slate-700 flex items-center justify-center shrink-0 active:scale-95 transition-all border border-slate-200/60 dark:border-slate-700/60"
@@ -1242,8 +1480,34 @@ export const NoraTutorView: React.FC<NoraTutorViewProps> = ({
           </div>
         </div>
 
-        {/* Right: Exactly 2 clean, spacious touch targets */}
-        <div className="flex items-center gap-2 shrink-0">
+        {/* Right: Credits + Rate Lesson + New Chat + Menu */}
+        <div className="flex items-center gap-1.5 shrink-0">
+          {/* Mobile Rate Lesson Trigger */}
+          <button
+            type="button"
+            onClick={() => handleOpenFeedbackModal(false)}
+            className={`w-10 h-10 rounded-xl border flex items-center justify-center active:scale-95 transition-all shadow-2xs ${
+              sessionFeedback
+                ? 'bg-emerald-50 dark:bg-emerald-950/60 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300'
+                : 'bg-amber-50 dark:bg-amber-950/60 border-amber-200/80 dark:border-amber-800/80 text-amber-600 dark:text-amber-300'
+            }`}
+            title={sessionFeedback ? `Rated ${sessionFeedback.rating}/5 stars` : 'Rate Lesson Helpfulness'}
+            aria-label="Rate lesson helpfulness"
+          >
+            <Star className="w-4 h-4 fill-amber-400 text-amber-500" />
+          </button>
+
+          {/* Mobile Credits Top-up Trigger */}
+          <button
+            type="button"
+            onClick={() => setShowCreditModal(true)}
+            className="h-10 px-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/60 hover:bg-amber-100 text-amber-800 dark:text-amber-200 border border-amber-200/80 dark:border-amber-800/80 flex items-center gap-1 text-xs font-black active:scale-95 transition-all shadow-2xs"
+            title="AI Study Credits - Click to buy more credits"
+          >
+            <Zap className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
+            <span>{isUserAdmin ? '∞' : credits}</span>
+          </button>
+
           {/* New Chat */}
           <button
             type="button"
@@ -1748,6 +2012,12 @@ export const NoraTutorView: React.FC<NoraTutorViewProps> = ({
                               {sess.activeMode}
                             </span>
                           )}
+                          {sess.feedback && (
+                            <span className="px-1.5 py-0.2 bg-amber-100 dark:bg-amber-950/80 text-amber-700 dark:text-amber-300 rounded font-bold flex items-center gap-0.5">
+                              <Star className="w-2.5 h-2.5 fill-amber-400 text-amber-500" />
+                              {sess.feedback.rating}
+                            </span>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -1786,6 +2056,28 @@ export const NoraTutorView: React.FC<NoraTutorViewProps> = ({
 
         {/* PANEL 2: CENTER CHAT CANVAS */}
         <main className="flex-1 flex flex-col min-w-0 h-full overflow-hidden relative bg-slate-50/60 dark:bg-slate-950">
+          {/* Zero Credit Lockout Banner across AI Tutor Session */}
+          {!isUserAdmin && credits <= 0 && (
+            <div className="bg-amber-500/10 dark:bg-amber-950/60 border-b border-amber-300 dark:border-amber-700/80 px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-amber-900 dark:text-amber-200 shrink-0 z-10 animate-in fade-in">
+              <div className="flex items-center gap-2.5">
+                <Zap className="w-5 h-5 text-amber-600 dark:text-amber-400 fill-amber-500 shrink-0 animate-pulse" />
+                <div>
+                  <span className="font-extrabold block text-slate-900 dark:text-slate-100">AI Tutor Interaction Locked (0 Credits)</span>
+                  <span className="text-amber-800 dark:text-amber-300">
+                    Your balance is 0 credits. Socratic dialogues, concept explanations, and diagnostic quizzes require credits.
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowCreditModal(true)}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-extrabold text-xs rounded-xl shadow-xs transition-all shrink-0 cursor-pointer self-start sm:self-auto"
+              >
+                Top Up Credits ⚡
+              </button>
+            </div>
+          )}
+
           {/* Messages Scroll Area */}
           <div 
             ref={chatScrollContainerRef}
@@ -1837,7 +2129,7 @@ export const NoraTutorView: React.FC<NoraTutorViewProps> = ({
             )}
 
             <div
-              className={`rounded-2xl p-3.5 sm:p-5 shadow-xs leading-relaxed text-[13px] sm:text-sm break-words [overflow-wrap:anywhere] overflow-hidden ${
+              className={`rounded-2xl p-3.5 sm:p-5 shadow-xs leading-relaxed text-[13px] sm:text-sm break-words [overflow-wrap:anywhere] relative ${
                 msg.sender === 'user'
                   ? 'max-w-[88%] sm:max-w-[78%] bg-blue-600 text-white rounded-br-xs'
                   : 'w-full max-w-full sm:max-w-[85%] md:max-w-[78%] bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 text-slate-900 dark:text-slate-100 rounded-bl-xs'
@@ -1846,39 +2138,26 @@ export const NoraTutorView: React.FC<NoraTutorViewProps> = ({
               {/* Header with speaker label */}
               {msg.sender === 'nora' && (
                 <div className="flex items-center justify-between gap-2 pb-2 mb-2 border-b border-slate-100 dark:border-slate-800 text-xs text-slate-400 dark:text-slate-400">
-                  <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5 min-w-0 flex-1 flex-wrap">
                     <span className="font-bold text-blue-700 dark:text-blue-400 shrink-0">Nora</span>
                     <span className="text-[10px] text-slate-400 dark:text-slate-500 font-normal truncate">({msg.mode || 'Lecturer'})</span>
+                    {msg.language && msg.language !== 'English' && (
+                      <span className="px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 text-[10px] font-bold flex items-center gap-1 shrink-0 animate-fade-in shadow-2xs">
+                        <span>{msg.language === 'Yoruba' ? '🇳🇬' : msg.language === 'Igbo' ? '🇳🇬' : msg.language === 'Hausa' ? '🇳🇬' : msg.language === 'French' ? '🇫🇷' : '🌍'}</span>
+                        <span>{msg.language} + English</span>
+                      </span>
+                    )}
                   </div>
 
-                  <div className="flex items-center gap-1 shrink-0">
-                    {isSpeakingMessageId === msg.id ? (
-                      <div className="flex items-center gap-1.5">
-                        <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 text-[11px] font-semibold border border-blue-200/60 dark:border-blue-800 shadow-2xs">
-                          <Volume2 className="w-3 h-3 text-blue-600 dark:text-blue-400 animate-pulse" />
-                          <span>Reading</span>
-                        </span>
-                        <button
-                          type="button"
-                          onClick={handleStopReading}
-                          className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 hover:bg-rose-100 text-xs font-medium transition-colors border border-rose-200/60 dark:border-rose-900 shadow-2xs"
-                          title="Stop reading"
-                        >
-                          <Square className="w-2.5 h-2.5 fill-current" />
-                          <span>Stop</span>
-                        </button>
-                      </div>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => handleStartReading(msg.content, msg.id)}
-                        className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-slate-500 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50/80 dark:hover:bg-slate-800 text-xs font-medium transition-colors"
-                        title="Read aloud"
-                      >
-                        <Volume2 className="w-3.5 h-3.5" />
-                        <span className="hidden sm:inline">Read aloud</span>
-                      </button>
-                    )}
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {/* Multilingual Gemini 3.8 TTS Audio Player in Chat */}
+                    <MultilingualAudioPlayer
+                      textToRead={msg.content}
+                      textKey={msg.id}
+                      lessonTitle="Nora's Explanation"
+                      variant="compact-inline"
+                      initialLanguage={(msg.language as any) || undefined}
+                    />
 
                     {/* Copy message button */}
                     <button
@@ -2067,8 +2346,14 @@ export const NoraTutorView: React.FC<NoraTutorViewProps> = ({
                     <button
                       key={i}
                       type="button"
-                      onClick={() => handleSend(opt)}
-                      className="px-3 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-800/90 hover:bg-blue-50 dark:hover:bg-slate-700 hover:border-blue-200 dark:hover:border-blue-500 border border-slate-200/90 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:text-blue-700 dark:hover:text-blue-300 transition-colors text-left max-w-full break-words [overflow-wrap:anywhere] active:scale-95 flex items-center gap-1.5 shadow-2xs leading-snug"
+                      onClick={() => {
+                        if (!isUserAdmin && credits <= 0) {
+                          setShowCreditModal(true);
+                          return;
+                        }
+                        handleSend(opt);
+                      }}
+                      className="px-3 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-800/90 hover:bg-blue-50 dark:hover:bg-slate-750 hover:border-blue-200 dark:hover:border-blue-500 border border-slate-200/90 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:text-blue-700 dark:hover:text-blue-300 transition-colors text-left max-w-full break-words [overflow-wrap:anywhere] active:scale-95 flex items-center gap-1.5 shadow-2xs leading-snug cursor-pointer"
                     >
                       <Sparkles className="w-3 h-3 text-blue-500 shrink-0" />
                       <span className="break-words [overflow-wrap:anywhere]">{opt}</span>
@@ -2180,8 +2465,8 @@ export const NoraTutorView: React.FC<NoraTutorViewProps> = ({
                 {[
                   { icon: '🎯', label: 'Quiz my understanding', prompt: 'Give me a concept check question with 4 options to test where my understanding is right now.' },
                   { icon: '💡', label: 'Explain the core concept step-by-step', prompt: 'Explain the foundational intuition and core concepts step-by-step with real-world examples.' },
-                  { icon: '⚡', label: 'Summarize the 3 key rules', prompt: 'What are the 3 most essential principles I must master for exams?' },
-                  { icon: '🔍', label: 'Probe my blind spots with a challenge', prompt: 'Ask me a tricky Socratic question that tests my intuition on potential misconceptions.' },
+                  { icon: '🇳🇬', label: 'Ṣàlàyé ní Yorùbá (Explain in Yoruba)', prompt: 'Jọ̀wọ́ ṣàlàyé àwọn kókó ẹ̀kọ́ pàtàkì nínú ẹ̀kọ́ yìí ní èdè Yorùbá pẹ̀lú àlàyé ní èdè Gẹ̀ẹ́sì.' },
+                  { icon: '⚡', label: 'Summarize key principles', prompt: 'What are the 3 most essential principles I must master for exams?' },
                 ].map((starter, sIdx) => (
                   <button
                     key={sIdx}
@@ -2212,6 +2497,40 @@ export const NoraTutorView: React.FC<NoraTutorViewProps> = ({
               <div className="w-2 h-2 rounded-full bg-blue-600 animate-bounce [animation-delay:0.2s]"></div>
               <div className="w-2 h-2 rounded-full bg-blue-600 animate-bounce [animation-delay:0.4s]"></div>
               <span className="text-xs text-slate-400 ml-1 font-medium">Nora is reflecting and adapting...</span>
+            </div>
+          </div>
+        )}
+
+        {/* Inline Post-Lesson Feedback Prompt Card once dialogue is underway */}
+        {hasUserInteracted && !loading && (
+          <div className="pt-2 pb-1">
+            <div className="p-3.5 rounded-2xl bg-gradient-to-r from-blue-50/90 via-indigo-50/80 to-amber-50/80 dark:from-slate-900 dark:via-slate-800/90 dark:to-amber-950/30 border border-blue-200/80 dark:border-slate-700/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 shadow-2xs">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="w-8 h-8 rounded-xl bg-amber-100 dark:bg-amber-950/80 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
+                  <Star className="w-4 h-4 fill-amber-400 text-amber-500" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs font-extrabold text-slate-900 dark:text-slate-100 leading-tight">
+                    {sessionFeedback
+                      ? `You rated this Socratic lesson ${sessionFeedback.rating}/5 stars`
+                      : 'Finished this Socratic lesson?'}
+                  </p>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-tight mt-0.5">
+                    {sessionFeedback
+                      ? `Comprehension: ${sessionFeedback.comprehensionAfter.replace('-', ' ')} · Tap to update your rating`
+                      : 'Rate the helpfulness of this lesson to help Nora adapt & earn +15 Study XP'}
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => handleOpenFeedbackModal(false)}
+                className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-xs transition-all shrink-0 cursor-pointer"
+              >
+                <Star className="w-3.5 h-3.5 fill-amber-300 text-amber-300" />
+                <span>{sessionFeedback ? 'Update Rating' : 'Conclude & Rate Lesson'}</span>
+              </button>
             </div>
           </div>
         )}
@@ -2283,21 +2602,40 @@ export const NoraTutorView: React.FC<NoraTutorViewProps> = ({
               }, 150);
             }}
             placeholder={
-              studySet?.title 
-                ? (studySet.title.length > 22 ? 'Ask Nora about this...' : `Ask about ${studySet.title}...`)
-                : 'Ask Nora anything...'
+              !isUserAdmin && credits <= 0
+                ? "You have 0 credits. Top up your balance to chat with Nora..."
+                : (studySet?.title 
+                    ? (studySet.title.length > 22 ? 'Ask in Yoruba, Igbo, Hausa, French, English...' : `Ask in Yoruba, Igbo, Hausa or English...`)
+                    : 'Ask Nora in Yoruba, Igbo, Hausa, French or English...')
             }
-            className="flex-1 min-w-0 bg-transparent border-0 focus:outline-none focus:ring-0 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 text-xs sm:text-sm py-2 px-1.5"
+            disabled={!isUserAdmin && credits <= 0}
+            className={`flex-1 min-w-0 bg-transparent border-0 focus:outline-none focus:ring-0 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 text-xs sm:text-sm py-2 px-1.5 ${
+              !isUserAdmin && credits <= 0 ? 'cursor-not-allowed opacity-60' : ''
+            }`}
           />
 
           <button
-            type="submit"
-            disabled={!input.trim() || loading}
-            className="w-8 h-8 sm:w-auto sm:px-4 sm:h-9 bg-blue-600 hover:bg-blue-700 active:scale-95 disabled:opacity-40 disabled:hover:bg-blue-600 text-white rounded-xl shadow-xs transition-all flex items-center justify-center gap-1.5 shrink-0 font-bold text-xs"
+            type={(!isUserAdmin && credits <= 0) ? "button" : "submit"}
+            onClick={(!isUserAdmin && credits <= 0) ? () => setShowCreditModal(true) : undefined}
+            disabled={((!input.trim() && (isUserAdmin || credits > 0)) || loading)}
+            className={`w-8 h-8 sm:w-auto sm:px-4 sm:h-9 text-white rounded-xl shadow-xs transition-all flex items-center justify-center gap-1.5 shrink-0 font-bold text-xs cursor-pointer ${
+              !isUserAdmin && credits <= 0
+                ? 'bg-amber-600 hover:bg-amber-700 active:scale-95 shadow-amber-600/20'
+                : 'bg-blue-600 hover:bg-blue-700 active:scale-95 disabled:opacity-40 disabled:hover:bg-blue-600'
+            }`}
             aria-label="Send message"
           >
-            <Send className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Send</span>
+            {!isUserAdmin && credits <= 0 ? (
+              <>
+                <Zap className="w-3.5 h-3.5 fill-white text-white animate-pulse" />
+                <span className="hidden sm:inline">Top Up ⚡</span>
+              </>
+            ) : (
+              <>
+                <Send className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Send</span>
+              </>
+            )}
           </button>
         </form>
       </div>
@@ -2812,6 +3150,35 @@ export const NoraTutorView: React.FC<NoraTutorViewProps> = ({
           </div>
         </div>
       )}
+
+      {/* Credit Purchase Modal */}
+      <CreditPurchaseModal
+        isOpen={showCreditModal}
+        onClose={() => setShowCreditModal(false)}
+        requiredCredits={1}
+        featureName="Nora AI Socratic Tutoring"
+      />
+
+      {/* Post-Tutor Session Helpfulness & Comprehension Feedback Modal */}
+      <TutorSessionFeedbackModal
+        isOpen={showFeedbackModal}
+        onClose={() => {
+          setShowFeedbackModal(false);
+          setFeedbackTriggeredByExit(false);
+        }}
+        onExitAfterFeedback={onBack}
+        onStartNewSessionAfterFeedback={handleStartNewChat}
+        onSubmitFeedback={handleSubmitSessionFeedback}
+        sessionTitle={
+          sessions.find((s) => s.id === currentSessionId)?.title ||
+          (studySet ? studySet.title : 'General Socratic Lesson')
+        }
+        tutorMode={activeMode}
+        teachingPersona={selectedStyle}
+        messageCount={messages.length}
+        existingFeedback={sessionFeedback}
+        triggeredByExit={feedbackTriggeredByExit}
+      />
     </div>
   );
 };

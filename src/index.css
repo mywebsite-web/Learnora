@@ -60,3 +60,46 @@ html.dark body {
 .animate-loading-bar {
   animation: loadingBarSlide 1.6s cubic-bezier(0.4, 0, 0.2, 1) infinite;
 }
+
+/* Custom slider thumb matching user specification screenshot */
+input[type="range"].credit-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  background: #e2e8f0;
+  height: 8px;
+  border-radius: 9999px;
+  outline: none;
+}
+
+html.dark input[type="range"].credit-slider {
+  background: #334155;
+}
+
+input[type="range"].credit-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 3.5px solid #1e40af;
+  cursor: pointer;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.12);
+  transition: transform 0.15s ease, border-color 0.15s ease;
+}
+
+input[type="range"].credit-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.18);
+  border-color: #1d4ed8;
+}
+
+input[type="range"].credit-slider::-moz-range-thumb {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 3.5px solid #1e40af;
+  cursor: pointer;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.12);
+}
+

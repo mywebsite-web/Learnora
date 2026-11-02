@@ -50,7 +50,8 @@ import {
   HelpCircle,
   Inbox,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Zap
 } from 'lucide-react';
 import { 
   UserProfile, 
@@ -411,6 +412,18 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ currentUserEmail, onBack
       showToast('Failed to reactivate account.');
     } finally {
       setActionLoading(false);
+    }
+  };
+
+  const handleGrantCredits = async (targetUser: UserProfile, amount = 10) => {
+    try {
+      const res = await DBService.addCredits(targetUser.uid, amount, `Admin Grant by ${currentUserEmail || ADMIN_EMAIL}`, {
+        type: 'admin_grant'
+      });
+      setUsers(prev => prev.map(u => u.uid === targetUser.uid ? { ...u, aiCredits: res.newBalance } : u));
+      showToast(`⚡ Granted +${amount} credits to ${targetUser.displayName || targetUser.email}! New balance: ${res.newBalance} credits.`);
+    } catch (err) {
+      showToast('Failed to grant credits.');
     }
   };
 
@@ -2418,16 +2431,22 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ currentUserEmail, onBack
                           </div>
                         </td>
 
-                        {/* Stats */}
+                        {/* Stats & Credits */}
                         <td className="py-3.5 px-4">
-                          <div className="flex items-center gap-3 text-[11px]">
-                            <span className="flex items-center gap-1 text-amber-400" title="Points">
-                              <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
-                              <span>{u.points || 0}</span>
-                            </span>
-                            <span className="flex items-center gap-1 text-orange-400" title="Streak Days">
-                              <Flame className="w-3 h-3 fill-orange-400 text-orange-400" />
-                              <span>{u.streakDays || 0}d</span>
+                          <div className="flex flex-col gap-1 text-[11px]">
+                            <div className="flex items-center gap-3">
+                              <span className="flex items-center gap-1 text-amber-400" title="Points">
+                                <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
+                                <span>{u.points || 0}</span>
+                              </span>
+                              <span className="flex items-center gap-1 text-orange-400" title="Streak Days">
+                                <Flame className="w-3 h-3 fill-orange-400 text-orange-400" />
+                                <span>{u.streakDays || 0}d</span>
+                              </span>
+                            </div>
+                            <span className="flex items-center gap-1 text-amber-300 font-bold" title="AI Credits Balance">
+                              <Zap className="w-3 h-3 text-amber-400 fill-amber-400" />
+                              <span>{isSelfAdmin ? 'Unlimited' : `${u.aiCredits !== undefined ? u.aiCredits : 10} Credits`}</span>
                             </span>
                           </div>
                         </td>
@@ -2440,6 +2459,17 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ currentUserEmail, onBack
                         {/* Actions */}
                         <td className="py-3.5 px-4 text-right">
                           <div className="flex items-center justify-end gap-1">
+                            {!isSelfAdmin && (
+                              <button
+                                type="button"
+                                onClick={() => handleGrantCredits(u, 10)}
+                                className="p-1.5 rounded-lg text-amber-400 hover:text-amber-300 hover:bg-amber-950/50 transition-colors"
+                                title="Grant +10 Free AI Study Credits to this student"
+                              >
+                                <Zap className="w-4 h-4 fill-amber-400/40" />
+                              </button>
+                            )}
+
                             {isSuspended ? (
                               <button
                                 type="button"

@@ -7,11 +7,14 @@ import {
   CheckCircle2, 
   BarChart3, 
   Award,
-  BookOpen
+  BookOpen,
+  Zap
 } from 'lucide-react';
-import { EssayFeedback } from '../types';
+import { EssayFeedback, isAdminEmail } from '../types';
 import { AIService } from '../services/aiService';
 import { DBService } from '../services/dbService';
+import { useAuth } from '../context/AuthContext';
+import { CreditPurchaseModal } from './CreditPurchaseModal';
 
 interface EssayGraderViewProps {
   userId: string;
@@ -28,9 +31,21 @@ export const EssayGraderView: React.FC<EssayGraderViewProps> = ({ userId, onBack
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Credit limits & purchase modal
+  const { profile, credits, deductCredits } = useAuth();
+  const [showCreditModal, setShowCreditModal] = useState(false);
+  const isUserAdmin = profile?.role === 'admin' || isAdminEmail(profile?.email);
+
   const handleGrade = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!essayContent.trim()) return;
+
+    if (!isUserAdmin && credits < 1) {
+      setError(`You need at least 1 AI credit to grade an essay. Your current balance is ${credits} credits.`);
+      setShowCreditModal(true);
+      return;
+    }
+
     setLoading(true);
     setError(null);
 
@@ -52,6 +67,10 @@ export const EssayGraderView: React.FC<EssayGraderViewProps> = ({ userId, onBack
 
       await DBService.saveEssay(fullFeedback);
       setFeedback(fullFeedback);
+
+      if (!isUserAdmin) {
+        deductCredits(1, `AI Essay Analysis: ${title || 'Draft'}`).catch(() => {});
+      }
     } catch (err: any) {
       console.error(err);
       setError(err?.message || 'Failed to grade essay. Please check internet connection.');
@@ -80,6 +99,22 @@ export const EssayGraderView: React.FC<EssayGraderViewProps> = ({ userId, onBack
             <h2 className="font-bold text-sm text-slate-900 dark:text-slate-100 font-serif">Academic Essay Grader &amp; Rubric Feedback</h2>
             <p className="text-[11px] text-slate-500 dark:text-slate-400">Constructive analysis of structure, thesis, evidence &amp; clarity</p>
           </div>
+        </div>
+
+        {/* AI Credits Badge */}
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setShowCreditModal(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-50 dark:bg-amber-950/60 hover:bg-amber-100 text-amber-800 dark:text-amber-200 border border-amber-200/80 dark:border-amber-800/80 text-xs font-bold transition-all shadow-2xs cursor-pointer active:scale-95"
+            title="AI Study Credits - Click to buy more credits"
+          >
+            <Zap className="w-3.5 h-3.5 text-amber-500 fill-amber-500 animate-pulse" />
+            <span>{isUserAdmin ? 'Unlimited' : `${credits} Credits`}</span>
+            {!isUserAdmin && (
+              <span className="text-[10px] px-1.5 py-0.2 rounded bg-amber-600 text-white font-black">Top up</span>
+            )}
+          </button>
         </div>
       </div>
 
@@ -265,6 +300,14 @@ export const EssayGraderView: React.FC<EssayGraderViewProps> = ({ userId, onBack
           </div>
         )}
       </div>
+
+      {/* Credit Purchase Modal */}
+      <CreditPurchaseModal
+        isOpen={showCreditModal}
+        onClose={() => setShowCreditModal(false)}
+        requiredCredits={1}
+        featureName="Academic Essay Grader"
+      />
     </div>
   );
 };

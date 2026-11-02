@@ -214,4 +214,8 @@ export class ConfettiService {
       localStorage.setItem(key, 'true');
     } catch {}
   }
+
+  static fireCelebration(): void {
+    this.fireGrandCannons();
+  }
 }

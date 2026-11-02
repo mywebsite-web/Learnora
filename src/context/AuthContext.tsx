@@ -16,7 +16,7 @@ import {
 import { doc, onSnapshot } from 'firebase/firestore';
 import { auth, db, googleProvider } from '../lib/firebase';
 import { DBService } from '../services/dbService';
-import { UserProfile, ADMIN_EMAIL, isAdminEmail } from '../types';
+import { UserProfile, ADMIN_EMAIL, isAdminEmail, CreditTransaction } from '../types';
 import config from '../../firebase-applet-config.json';
 
 export const FIREBASE_AUTH_CONFIG = {
@@ -100,6 +100,11 @@ interface AuthContextType {
   logout: () => Promise<void>;
   refreshProfile: () => Promise<void>;
   updateProfileData: (data: Partial<UserProfile>) => Promise<void>;
+  credits: number;
+  creditTransactions: CreditTransaction[];
+  deductCredits: (amount: number, reason: string) => Promise<{ success: boolean; newBalance: number; error?: string }>;
+  addCredits: (amount: number, reason: string, meta?: { reference?: string; currency?: 'NGN' | 'USD'; pricePaid?: number; type?: 'purchase' | 'bonus' | 'admin_grant' }) => Promise<{ success: boolean; newBalance: number }>;
+  refreshCredits: () => Promise<number>;
   suspendedNotice: {
     title: string;
     reason: string;
@@ -375,6 +380,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           streakDays: 1,
           totalStudyMinutes: 0,
           points: 100,
+          aiCredits: isAdmin ? 99999 : 10,
           createdAt: Date.now(),
           updatedAt: Date.now(),
           selectedTheme: 'light',
@@ -387,6 +393,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         await DBService.saveUserProfile(userProf);
       } else {
         let changed = false;
+        if (userProf.aiCredits === undefined) {
+          userProf.aiCredits = isAdmin ? 99999 : 10;
+          changed = true;
+        }
         if (extra?.onboardingCompleted !== undefined && userProf.onboardingCompleted !== extra.onboardingCompleted) {
           userProf.onboardingCompleted = extra.onboardingCompleted;
           changed = true;
@@ -398,6 +408,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
         if (isAdminEmail(firebaseUser.email) && userProf.role !== 'admin') {
           userProf.role = 'admin';
+          userProf.aiCredits = 99999;
           changed = true;
         }
         if (changed) {
@@ -438,6 +449,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         streakDays: 1,
         totalStudyMinutes: 0,
         points: 100,
+        aiCredits: isAdmin ? 99999 : 10,
         createdAt: Date.now(),
         updatedAt: Date.now(),
         selectedTheme: 'light',
@@ -1032,6 +1044,97 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  /**
+   * Real-time Credits Access & Management
+   */
+  const credits = profile 
+    ? (profile.role === 'admin' || isAdminEmail(profile.email) ? 99999 : (profile.aiCredits !== undefined ? profile.aiCredits : 10))
+    : 0;
+
+  const creditTransactions: CreditTransaction[] = profile
+    ? (profile.creditsHistory && profile.creditsHistory.length > 0
+        ? profile.creditsHistory
+        : [
+            {
+              id: 'ctx_welcome_' + profile.uid,
+              userId: profile.uid,
+              userEmail: profile.email,
+              amount: 10,
+              type: 'bonus',
+              reason: 'Welcome Starter Bonus (10 Free AI Study Credits)',
+              timestamp: profile.createdAt || Date.now()
+            }
+          ])
+    : [];
+
+  const deductCredits = async (amount: number, reason: string) => {
+    if (!user) return { success: false, newBalance: 0, error: 'Please sign in first.' };
+    const res = await DBService.deductCredits(user.uid, amount, reason);
+    if (res.success && profile) {
+      setProfile(prev => prev ? {
+        ...prev,
+        aiCredits: res.newBalance,
+        creditsHistory: res.history || (res.transaction ? [res.transaction, ...(prev.creditsHistory || [])] : prev.creditsHistory)
+      } : null);
+    }
+    return res;
+  };
+
+  const addCredits = async (
+    amount: number, 
+    reason: string, 
+    meta?: {
+      reference?: string;
+      currency?: 'NGN' | 'USD';
+      pricePaid?: number;
+      type?: 'purchase' | 'bonus' | 'admin_grant';
+    }
+  ) => {
+    if (!user) return { success: false, newBalance: 0 };
+    const res = await DBService.addCredits(user.uid, amount, reason, meta);
+    if (res.success && profile) {
+      setProfile(prev => prev ? {
+        ...prev,
+        aiCredits: res.newBalance,
+        creditsHistory: res.history || (res.transaction ? [res.transaction, ...(prev.creditsHistory || [])] : prev.creditsHistory)
+      } : null);
+    }
+    return res;
+  };
+
+  const refreshCredits = async () => {
+    if (!user) return 0;
+    const balance = await DBService.getUserCredits(user.uid);
+    const txs = await DBService.getCreditTransactions(user.uid);
+    if (profile) {
+      setProfile(prev => prev ? { ...prev, aiCredits: balance, creditsHistory: txs } : null);
+    }
+    return balance;
+  };
+
+  // Listen to custom credit events broadcasted from purchases or actions
+  useEffect(() => {
+    const handleCreditUpdate = (e: any) => {
+      if (e.detail?.userId && user && e.detail.userId === user.uid) {
+        setProfile(prev => {
+          if (!prev) return null;
+          const nextHistory = e.detail.history
+            ? e.detail.history
+            : e.detail.transaction
+            ? [e.detail.transaction, ...(prev.creditsHistory || []).filter(t => t.id !== e.detail.transaction.id)]
+            : prev.creditsHistory;
+          return {
+            ...prev,
+            aiCredits: e.detail.newBalance,
+            creditsHistory: nextHistory
+          };
+        });
+      }
+    };
+    window.addEventListener('learnora_credits_updated', handleCreditUpdate);
+    return () => window.removeEventListener('learnora_credits_updated', handleCreditUpdate);
+  }, [user]);
+
   return (
     <AuthContext.Provider
       value={{
@@ -1050,6 +1153,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         logout,
         refreshProfile,
         updateProfileData,
+        credits,
+        creditTransactions,
+        deductCredits,
+        addCredits,
+        refreshCredits,
         suspendedNotice,
         clearSuspendedNotice,
         deletedNotice,
